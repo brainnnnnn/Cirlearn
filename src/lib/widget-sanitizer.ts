@@ -148,7 +148,9 @@ var inlineScripts=scripts.filter(function(s){return !s.src&&s.text});
 function _appendInline(){
 for(var k=0;k<inlineScripts.length;k++){
 var s=document.createElement('script');
-s.textContent=inlineScripts[k].text;
+// Wrap inline script in try/catch so CDN-dependency errors don't crash the widget
+var safeText='try{'+inlineScripts[k].text+'}catch(e){var _r=document.getElementById("__root");if(_r&&!_r.querySelector(".__err")){var _d=document.createElement("div");_d.className="__err";_d.style="padding:12px;color:#888;font-size:13px;";_d.textContent="可视化加载失败（库未能加载），请检查网络连接";_r.appendChild(_d);}}';
+s.textContent=safeText;
 for(var j=0;j<inlineScripts[k].attrs.length;j++)s.setAttribute(inlineScripts[k].attrs[j].name,inlineScripts[k].attrs[j].value);
 root.appendChild(s);
 }

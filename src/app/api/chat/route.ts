@@ -1,82 +1,35 @@
-import { WIDGET_SYSTEM_PROMPT, RENDER_WIDGET_TOOL } from '@/lib/widget-guidelines';
+import { MATH_SYSTEM_PROMPT, CHINESE_SYSTEM_PROMPT, ENGLISH_SYSTEM_PROMPT } from '@/lib/prompts/prompts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const enc = new TextEncoder();
 const DEFAULT_MODEL = 'moonshot-v1-8k';
-const FETCH_TIMEOUT_MS = 60_000;
+const FETCH_TIMEOUT_MS = 120_000;
 
 function ndjson(obj: object) {
   return enc.encode(JSON.stringify(obj) + '\n');
 }
 
-// Extract partial widget_code value from incomplete JSON string
-function extractPartialCode(partialJson: string): string | null {
-  const keyIdx = partialJson.indexOf('"widget_code"');
-  if (keyIdx === -1) return null;
-  const colonIdx = partialJson.indexOf(':', keyIdx + 13);
-  if (colonIdx === -1) return null;
-  let i = colonIdx + 1;
-  while (i < partialJson.length && partialJson[i] === ' ') i++;
-  if (i >= partialJson.length || partialJson[i] !== '"') return null;
-  i++; // skip opening quote
-
-  // Scan forward respecting escape sequences — stop at closing quote or end of string
-  let raw = '';
-  while (i < partialJson.length) {
-    const ch = partialJson[i];
-    if (ch === '\\' && i + 1 < partialJson.length) {
-      raw += ch + partialJson[i + 1];
-      i += 2;
-    } else if (ch === '"') {
-      break; // closing quote found
-    } else {
-      raw += ch;
-      i++;
-    }
-  }
-  // If we consumed a trailing lone backslash, drop it
-  if (raw.endsWith('\\')) raw = raw.slice(0, -1);
-
-  try {
-    return raw
-      .replace(/\\\\/g, '\x00BSLASH\x00')
-      .replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\r/g, '\r')
-      .replace(/\\"/g, '"')
-      .replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
-      .replace(/\x00BSLASH\x00/g, '\\');
-  } catch { return null; }
-}
-
 type Controller = ReadableStreamDefaultController<Uint8Array>;
 
-// ── OpenAI-compatible SSE parser ────────────────────────────────────────────
+// ── Simple text-only SSE parser (no tool calls) ─────────────────────────────
 
-interface ToolCallState {
-  id: string;
-  name: string;
-  args: string; // accumulated JSON string
-  emittedStart: boolean;
-  prevCode: string;
-}
-
-async function streamOpenAI(
+async function streamText(
   res: Response,
   ctrl: Controller,
-): Promise<{ toolCall: ToolCallState | null; assistantText: string }> {
+): Promise<string> {
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let buf = '';
   let assistantText = '';
-  const toolCallMap: Record<number, ToolCallState> = {};
-  let widgetId = 0;
-  let toolCallActive = false;
+  let chunkCount = 0;
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    buf += decoder.decode(value, { stream: true });
+    const decoded = decoder.decode(value, { stream: true });
+    buf += decoded;
     const lines = buf.split('\n');
     buf = lines.pop() ?? '';
 
@@ -91,161 +44,37 @@ async function streamOpenAI(
       if (!choice) continue;
       const delta = (choice.delta ?? {}) as Record<string, unknown>;
 
-      // Tool calls — check first so we can suppress text once a tool starts
-      const tcs = delta.tool_calls as Array<Record<string, unknown>> | undefined;
-      if (tcs && tcs.length > 0) toolCallActive = true;
-
-      // Text — suppress once a tool call starts (some models emit content alongside tool_calls)
-      if (typeof delta.content === 'string' && delta.content && !toolCallActive) {
+      if (typeof delta.content === 'string' && delta.content) {
+        chunkCount++;
         assistantText += delta.content;
         ctrl.enqueue(ndjson({ t: 'tx', v: delta.content }));
       }
-
-      if (tcs) {
-        for (const tc of tcs) {
-          const idx = tc.index as number;
-          if (!toolCallMap[idx]) {
-            toolCallMap[idx] = { id: String(tc.id ?? ''), name: '', args: '', emittedStart: false, prevCode: '' };
-          }
-          if (tc.id) toolCallMap[idx].id = String(tc.id);
-          const fn = (tc.function ?? {}) as Record<string, string>;
-          if (fn.name) toolCallMap[idx].name = fn.name;
-          if (fn.arguments) {
-            toolCallMap[idx].args += fn.arguments;
-            const state = toolCallMap[idx];
-
-            if (state.name === 'render_widget') {
-              if (!state.emittedStart) {
-                state.emittedStart = true;
-                ctrl.enqueue(ndjson({ t: 'ws', id: String(widgetId) }));
-              }
-              const code = extractPartialCode(state.args);
-              if (code && code !== state.prevCode) {
-                ctrl.enqueue(ndjson({ t: 'wd', id: String(widgetId), v: code }));
-                state.prevCode = code;
-              }
-            }
-          }
-        }
-      }
     }
   }
 
-  // Finalize widget
-  const tc = Object.values(toolCallMap).find(t => t.name === 'render_widget') ?? null;
-  if (tc) {
-    try {
-      const parsed = JSON.parse(tc.args);
-      ctrl.enqueue(ndjson({ t: 'we', id: String(widgetId), title: parsed.title ?? '', code: parsed.widget_code ?? tc.prevCode }));
-    } catch {
-      ctrl.enqueue(ndjson({ t: 'we', id: String(widgetId), title: '', code: tc.prevCode }));
-    }
-    return { toolCall: tc, assistantText };
-  }
-
-  return { toolCall: null, assistantText };
-}
-
-// ── Anthropic direct SSE parser ─────────────────────────────────────────────
-
-async function streamAnthropic(
-  res: Response,
-  ctrl: Controller,
-): Promise<{ toolCall: { id: string; name: string; args: string } | null; assistantText: string; assistantBlocks: unknown[] }> {
-  const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-  let buf = '';
-  let assistantText = '';
-  const assistantBlocks: unknown[] = [];
-
-  // track per content-block-index
-  const blocks: Record<number, { type: string; id?: string; name?: string; args: string; text: string }> = {};
-  let widgetId = 0;
-  let widgetBlockIdx = -1;
-  let prevCode = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const lines = buf.split('\n');
-    buf = lines.pop() ?? '';
-
-    for (const line of lines) {
-      if (!line.startsWith('data:')) continue;
-      let json: Record<string, unknown>;
-      try { json = JSON.parse(line.slice(5).trim()); } catch { continue; }
-
-      if (json.type === 'content_block_start') {
-        const idx = json.index as number;
-        const cb = json.content_block as Record<string, unknown>;
-        blocks[idx] = { type: String(cb.type), id: cb.id as string, name: cb.name as string, args: '', text: String(cb.text ?? '') };
-        if (cb.type === 'tool_use' && cb.name === 'render_widget') {
-          widgetBlockIdx = idx;
-          ctrl.enqueue(ndjson({ t: 'ws', id: String(widgetId) }));
-          prevCode = '';
-        }
-      }
-
-      if (json.type === 'content_block_delta') {
-        const idx = json.index as number;
-        const delta = json.delta as Record<string, unknown>;
-        if (!blocks[idx]) continue;
-
-        if (delta.type === 'text_delta') {
-          const text = String(delta.text ?? '');
-          assistantText += text;
-          blocks[idx].text += text;
-          ctrl.enqueue(ndjson({ t: 'tx', v: text }));
-        }
-
-        if (delta.type === 'input_json_delta') {
-          const partial = String(delta.partial_json ?? '');
-          blocks[idx].args += partial;
-          if (idx === widgetBlockIdx) {
-            const code = extractPartialCode(blocks[idx].args);
-            if (code && code !== prevCode) {
-              ctrl.enqueue(ndjson({ t: 'wd', id: String(widgetId), v: code }));
-              prevCode = code;
-            }
-          }
-        }
-      }
-
-      if (json.type === 'content_block_stop') {
-        const idx = json.index as number;
-        const b = blocks[idx];
-        if (!b) continue;
-        if (b.type === 'text' && b.text) assistantBlocks.push({ type: 'text', text: b.text });
-        if (b.type === 'tool_use') {
-          try {
-            const parsed = JSON.parse(b.args);
-            assistantBlocks.push({ type: 'tool_use', id: b.id, name: b.name, input: parsed });
-            if (idx === widgetBlockIdx) {
-              ctrl.enqueue(ndjson({ t: 'we', id: String(widgetId), title: parsed.title ?? '', code: parsed.widget_code ?? prevCode }));
-            }
-          } catch {
-            assistantBlocks.push({ type: 'tool_use', id: b.id, name: b.name, input: {} });
-            if (idx === widgetBlockIdx) {
-              ctrl.enqueue(ndjson({ t: 'we', id: String(widgetId), title: '', code: prevCode }));
-            }
-          }
-        }
-      }
-    }
-  }
-
-  const toolBlock = assistantBlocks.find(b => (b as Record<string, unknown>).type === 'tool_use') as
-    | { type: string; id: string; name: string; input: Record<string, unknown> } | undefined;
-
-  return {
-    toolCall: toolBlock ? { id: toolBlock.id, name: toolBlock.name, args: JSON.stringify(toolBlock.input) } : null,
-    assistantText,
-    assistantBlocks,
-  };
+  return assistantText;
 }
 
 // ── Main handler ─────────────────────────────────────────────────────────────
+
+function detectSubject(messages: Array<{ role: string; content: string }>): string {
+  const text = messages.map(m => m.content).join(' ');
+  const mathKeywords = /数学|计算|方程|函数|几何|证明|求解|导数|积分|矩阵|概率|统计|三角|面积|体积|多项式|因式|平方|立方|勾股|抛物线|坐标|向量|集合|不等式|直线|交点|图像|画出|画图|斜率|截距|二次|一次|正方形|长方形|三角形|菱形|梯形|圆|角|边|\d\s*[\+\-\*\/=]|[=＝]\s*\d|[xy]\s*[=＝]/;
+  const chineseKeywords = /语文|汉字|拼音|字词|组词|造句|作文|古诗|文言|部首|笔顺|成语|近义词|反义词|修辞|比喻|排比|词语|段落|中心思想|写法|鉴赏|赏析|怎么写|笔画/;
+  const englishKeywords = /英语|英文|单词|语法|时态|听力|口语|音标|从句|passive|tense|grammar|translate|english|[a-zA-Z]{3,}/i;
+  if (mathKeywords.test(text)) return 'math';
+  if (chineseKeywords.test(text)) return 'chinese';
+  if (englishKeywords.test(text)) return 'english';
+  return 'chinese';
+}
+
+function getSystemPrompt(subject: string): string {
+  switch (subject) {
+    case 'chinese': return CHINESE_SYSTEM_PROMPT;
+    case 'english': return ENGLISH_SYSTEM_PROMPT;
+    default: return MATH_SYSTEM_PROMPT;
+  }
+}
 
 export async function POST(req: Request) {
   const { messages, model, apiKey, baseURL } = await req.json() as {
@@ -267,6 +96,17 @@ export async function POST(req: Request) {
 
   const isAnthropic = !baseURL && apiKey.startsWith('sk-ant-');
   const isGoogle = !baseURL && apiKey.startsWith('AIza');
+  
+  // Auto-detect common providers when baseURL is not provided
+  let resolvedBaseURL = baseURL;
+  if (!resolvedBaseURL && !isAnthropic && !isGoogle) {
+    if (apiKey.startsWith('sk-')) {
+      resolvedBaseURL = 'https://api.moonshot.cn/v1'; // Kimi default
+    }
+  }
+
+  const subject = detectSubject(messages);
+  const systemPrompt = getSystemPrompt(subject);
 
   // Google: use OpenAI-compatible endpoint
   if (isGoogle) {
@@ -274,7 +114,7 @@ export async function POST(req: Request) {
     const googleModel = (model as string).replace(/^google\//, '') || 'gemini-2.0-flash';
     const readable = new ReadableStream<Uint8Array>({
       async start(ctrl) {
-        try { await runOpenAI(googleBase, apiKey, googleModel, messages, ctrl); }
+        try { await runOpenAI(googleBase, apiKey, googleModel, messages, systemPrompt, ctrl); }
         catch (err) { ctrl.enqueue(ndjson({ t: 'err', v: err instanceof Error ? err.message : String(err) })); }
         finally { ctrl.close(); }
       },
@@ -286,13 +126,12 @@ export async function POST(req: Request) {
     async start(ctrl) {
       try {
         if (isAnthropic) {
-          await runAnthropic(apiKey, model, messages, ctrl);
+          await runAnthropic(apiKey, model, messages, systemPrompt, ctrl);
         } else {
-          await runOpenAI(baseURL, apiKey, model, messages, ctrl);
+          await runOpenAI(resolvedBaseURL, apiKey, model, messages, systemPrompt, ctrl);
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error('[chat] error:', msg);
         ctrl.enqueue(ndjson({ t: 'err', v: msg }));
       } finally {
         ctrl.close();
@@ -303,69 +142,43 @@ export async function POST(req: Request) {
   return new Response(readable, { headers: { 'content-type': 'application/x-ndjson; charset=utf-8' } });
 }
 
-// ── OpenAI-compatible runner ─────────────────────────────────────────────────
+// ── OpenAI-compatible runner (text-only, no tool calls) ──────────────────────
 
 async function runOpenAI(
   baseURL: string | undefined,
   apiKey: string,
   model: string,
   messages: Array<{ role: string; content: string }>,
+  systemPrompt: string,
   ctrl: Controller,
 ) {
-  if (!baseURL) throw new Error('baseURL is required for non-Anthropic/Google providers');
+  if (!baseURL) throw new Error('baseURL is required。请填入API Base URL，例如：https://api.moonshot.cn/v1');
   const url = baseURL.replace(/\/$/, '') + '/chat/completions';
   const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` };
-
-  const body1 = JSON.stringify({
+  const bodyObj = {
     model: model || DEFAULT_MODEL,
-    messages: [{ role: 'system', content: WIDGET_SYSTEM_PROMPT }, ...messages],
-    tools: [RENDER_WIDGET_TOOL],
-    tool_choice: 'auto',
+    messages: [{ role: 'system', content: systemPrompt }, ...messages],
     stream: true,
-  });
+    max_tokens: 4000,
+  };
 
-  const res1 = await fetch(url, { method: 'POST', headers, body: body1, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-  if (!res1.ok) {
-    const err = await res1.text();
-    throw new Error(`API error ${res1.status}: ${err}`);
+  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(bodyObj), signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`API error ${res.status}: ${errText.slice(0, 200)}`);
   }
 
-  const { toolCall, assistantText } = await streamOpenAI(res1, ctrl);
-
-  if (!toolCall) return;
-
-  // Second turn: send tool result, get continuation text
-  const body2 = JSON.stringify({
-    model: model || DEFAULT_MODEL,
-    messages: [
-      { role: 'system', content: WIDGET_SYSTEM_PROMPT },
-      ...messages,
-      {
-        role: 'assistant',
-        content: assistantText || null,
-        tool_calls: [{
-          id: toolCall.id || 'call_0',
-          type: 'function',
-          function: { name: toolCall.name, arguments: toolCall.args },
-        }],
-      },
-      { role: 'tool', tool_call_id: toolCall.id || 'call_0', content: 'Widget rendered successfully.' },
-    ],
-    tools: [RENDER_WIDGET_TOOL],
-    tool_choice: 'auto',
-    stream: true,
-  });
-
-  const res2 = await fetch(url, { method: 'POST', headers, body: body2, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-  if (res2.ok) await streamOpenAI(res2, ctrl);
+  await streamText(res, ctrl);
 }
 
-// ── Anthropic runner ─────────────────────────────────────────────────────────
+// ── Anthropic runner (text-only, no tool calls) ──────────────────────────────
 
 async function runAnthropic(
   apiKey: string,
   model: string,
   messages: Array<{ role: string; content: string }>,
+  systemPrompt: string,
   ctrl: Controller,
 ) {
   const url = 'https://api.anthropic.com/v1/messages';
@@ -376,49 +189,56 @@ async function runAnthropic(
     'anthropic-version': '2023-06-01',
   };
 
-  const anthropicTool = {
-    name: RENDER_WIDGET_TOOL.function.name,
-    description: RENDER_WIDGET_TOOL.function.description,
-    input_schema: RENDER_WIDGET_TOOL.function.parameters,
-  };
-
-  const body1 = JSON.stringify({
+  const body = JSON.stringify({
     model: id,
     max_tokens: 4096,
-    system: WIDGET_SYSTEM_PROMPT,
+    system: systemPrompt,
     messages,
-    tools: [anthropicTool],
-    tool_choice: { type: 'auto' },
     stream: true,
   });
 
-  const res1 = await fetch(url, { method: 'POST', headers, body: body1, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-  if (!res1.ok) {
-    const err = await res1.text();
-    throw new Error(`Anthropic error ${res1.status}: ${err}`);
+  const res = await fetch(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Anthropic error ${res.status}: ${err}`);
   }
 
-  const { toolCall, assistantBlocks } = await streamAnthropic(res1, ctrl);
+  await streamAnthropicText(res, ctrl);
+}
 
-  if (!toolCall) return;
+// ── Anthropic text-only SSE parser ───────────────────────────────────────────
 
-  const body2 = JSON.stringify({
-    model: id,
-    max_tokens: 4096,
-    system: WIDGET_SYSTEM_PROMPT,
-    messages: [
-      ...messages,
-      { role: 'assistant', content: assistantBlocks },
-      {
-        role: 'user',
-        content: [{ type: 'tool_result', tool_use_id: toolCall.id, content: 'Widget rendered successfully.' }],
-      },
-    ],
-    tools: [anthropicTool],
-    tool_choice: { type: 'auto' },
-    stream: true,
-  });
+async function streamAnthropicText(
+  res: Response,
+  ctrl: Controller,
+): Promise<string> {
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let assistantText = '';
 
-  const res2 = await fetch(url, { method: 'POST', headers, body: body2, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-  if (res2.ok) await streamAnthropic(res2, ctrl);
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop() ?? '';
+
+    for (const line of lines) {
+      if (!line.startsWith('data:')) continue;
+      let json: Record<string, unknown>;
+      try { json = JSON.parse(line.slice(5).trim()); } catch { continue; }
+
+      if (json.type === 'content_block_delta') {
+        const delta = json.delta as Record<string, unknown>;
+        if (delta.type === 'text_delta') {
+          const text = String(delta.text ?? '');
+          assistantText += text;
+          ctrl.enqueue(ndjson({ t: 'tx', v: text }));
+        }
+      }
+    }
+  }
+
+  return assistantText;
 }

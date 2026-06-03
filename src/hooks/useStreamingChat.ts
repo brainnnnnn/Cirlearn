@@ -24,6 +24,7 @@ export interface ChatMessage {
   // user messages use content; assistant messages use segments
   content: string;
   segments: MessageSegment[];
+  error?: string;
 }
 
 export function useStreamingChat(apiPath = '/api/chat') {
@@ -49,7 +50,7 @@ export function useStreamingChat(apiPath = '/api/chat') {
     const nextMessages = [...messages, userMsg];
 
     setMessages([...nextMessages, {
-      id: assistantId, role: 'assistant', content: '', segments: [],
+      id: assistantId, role: 'assistant', content: '', segments: [], error: undefined,
     }]);
     setIsLoading(true);
     setError(null);
@@ -153,12 +154,22 @@ export function useStreamingChat(apiPath = '/api/chat') {
       }
 
       if (segs.length === 0) {
-        throw new Error('No response received — check your API key and model access.');
+        throw new Error('未收到回复，可能是模型响应超时或服务繁忙，请重试。');
       }
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
-        setError(err as Error);
-        setMessages(prev => prev.filter(m => m.id !== assistantId));
+        const msg = err instanceof Error ? err.message : String(err);
+        // Batch all state updates together so isLoading resets atomically
+        setError(new Error(msg));
+        setIsLoading(false);
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === assistantId
+              ? { ...m, segments: [], error: msg }
+              : m
+          )
+        );
+        return;
       }
     } finally {
       setIsLoading(false);
@@ -169,5 +180,11 @@ export function useStreamingChat(apiPath = '/api/chat') {
     abortRef.current?.abort();
   }, []);
 
-  return { messages, isLoading, error, sendMessage, stop };
+  const setMessagesExternal = useCallback((msgs: ChatMessage[]) => {
+    setMessages(msgs);
+    setIsLoading(false);
+    setError(null);
+  }, []);
+
+  return { messages, setMessages: setMessagesExternal, isLoading, error, sendMessage, stop };
 }

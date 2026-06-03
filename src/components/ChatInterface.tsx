@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState } from 'react';
 import { MessageItem } from './MessageItem';
 import { useStreamingChat } from '@/hooks/useStreamingChat';
+import type { ChatMessage } from '@/hooks/useStreamingChat';
 
 const PROVIDER_MODELS = {
   anthropic: [
@@ -14,16 +15,23 @@ const PROVIDER_MODELS = {
     { value: 'gemini-2.5-flash-preview-05-20', label: '2.5 Flash' },
     { value: 'gemini-2.0-flash', label: '2.0 Flash' },
   ],
+  kimi: [
+    { value: 'moonshot-v1-8k', label: 'v1-8k（推荐）' },
+    { value: 'moonshot-v1-32k', label: 'v1-32k' },
+    { value: 'kimi-k2.5', label: 'k2.5（慢）' },
+  ],
 };
 
 const PROVIDER_DEFAULTS: Record<string, string> = {
   anthropic: 'claude-sonnet-4-5',
   google: 'gemini-2.5-flash-preview-05-20',
+  kimi: 'moonshot-v1-8k',
 };
 
-function detectProvider(key: string): 'anthropic' | 'google' | 'custom' {
+function detectProvider(key: string): 'anthropic' | 'google' | 'kimi' | 'custom' {
   if (key.startsWith('sk-ant-')) return 'anthropic';
   if (key.startsWith('AIza')) return 'google';
+  if (key.startsWith('sk-')) return 'kimi';
   return 'custom';
 }
 
@@ -44,7 +52,7 @@ export function ChatInterface() {
   const defaultModel = PROVIDER_DEFAULTS[provider] ?? '';
   const displayModel = model || defaultModel || '未设置';
 
-  const { messages, isLoading, error, sendMessage, stop } = useStreamingChat('/api/chat');
+  const { messages, setMessages, isLoading, error, sendMessage, stop } = useStreamingChat('/api/chat');
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -94,7 +102,11 @@ export function ChatInterface() {
   }
 
   function submit() {
-    if (!input.trim() || !apiKey || isLoading) return;
+    if (!input.trim() || isLoading) return;
+    if (!apiKey) {
+      setSettingsOpen(true);
+      return;
+    }
     const text = input;
     setInput('');
     sendMessage(text, { apiKey, model, baseURL: baseURL.trim() || undefined });
@@ -120,7 +132,7 @@ export function ChatInterface() {
         </div>
 
         {/* Center: settings trigger */}
-        <div ref={settingsRef} className="absolute left-1/2 -translate-x-1/2">
+        <div ref={settingsRef} className="absolute left-1/2 -translate-x-1/2 z-50">
           <button
             onClick={() => setSettingsOpen(v => !v)}
             className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border border-border/50 hover:bg-muted/50 transition-colors text-muted-foreground"
@@ -134,7 +146,7 @@ export function ChatInterface() {
 
           {/* Settings popover */}
           {settingsOpen && (
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-80 bg-background border border-border/50 rounded-xl shadow-lg z-50 p-4 flex flex-col gap-3">
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-80 bg-background border border-border/50 rounded-xl shadow-lg z-[100] p-4 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-foreground">API 设置</span>
                 <button
@@ -243,6 +255,12 @@ export function ChatInterface() {
                 </button>
               ))}
             </div>
+            <button
+              onClick={() => loadMockDemo(setMessages)}
+              className="text-xs px-4 py-2 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium"
+            >
+              🎬 查看卡片演示（无需API）
+            </button>
           </div>
         )}
 
@@ -255,15 +273,10 @@ export function ChatInterface() {
               content={msg.content}
               segments={msg.segments}
               isStreaming={isLastAssistant && isLoading}
+              error={msg.error}
             />
           );
         })}
-
-        {error && (
-          <div className="text-xs text-destructive px-3 py-2 rounded bg-destructive/10 border border-destructive/20 mb-4">
-            {error.message}
-          </div>
-        )}
 
         <div ref={messagesEndRef} />
       </div>
@@ -297,4 +310,42 @@ export function ChatInterface() {
       </div>
     </div>
   );
+}
+
+// ── Mock demo data ───────────────────────────────────────────────────────────
+
+function loadMockDemo(setMessages: (msgs: ChatMessage[]) => void) {
+  const mockAssistantText = `## 题目信息
+已知：函数 f(x) = x² - 4x + 3，定义域为 [0, 5]
+所求：f(x) 在该区间上的最大值和最小值
+
+## 解题思路
+这是一个开口向上的抛物线，先配方找顶点，再比较区间端点。
+
+## 分步推导
+1. 配方：f(x) = (x - 2)² - 1
+2. 顶点坐标 (2, -1)，对称轴 x = 2
+3. 对称轴在区间 [0, 5] 内，最小值在顶点
+4. 比较端点：f(0) = 3，f(5) = 8
+5. 最大值在 x = 5：f(5) = 8
+
+## 答案
+最小值 **-1**（当 x = 2 时），最大值 **8**（当 x = 5 时）`;
+
+  const demoMessages: ChatMessage[] = [
+    {
+      id: 'u-demo',
+      role: 'user',
+      content: '求函数 f(x) = x² - 4x + 3 在区间 [0, 5] 上的最值',
+      segments: [],
+    },
+    {
+      id: 'a-demo',
+      role: 'assistant',
+      content: mockAssistantText,
+      segments: [{ type: 'text', content: mockAssistantText, key: 't-demo' }],
+    },
+  ];
+
+  setMessages(demoMessages);
 }
