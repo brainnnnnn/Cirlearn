@@ -77,11 +77,12 @@ function getSystemPrompt(subject: string): string {
 }
 
 export async function POST(req: Request) {
-  const { messages, model, apiKey, baseURL } = await req.json() as {
+  const { messages, model, apiKey, baseURL, subjectOverride } = await req.json() as {
     messages: Array<{ role: string; content: string }>;
     model: string;
     apiKey: string;
     baseURL?: string;
+    subjectOverride?: 'math' | 'chinese' | 'english';
   };
 
   if (!apiKey || typeof apiKey !== 'string') {
@@ -105,7 +106,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const subject = detectSubject(messages);
+  const subject = subjectOverride ?? detectSubject(messages);
   const systemPrompt = getSystemPrompt(subject);
 
   // Google: use OpenAI-compatible endpoint

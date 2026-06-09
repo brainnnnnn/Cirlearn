@@ -18,13 +18,28 @@ export interface WidgetSegment {
 
 export type MessageSegment = TextSegment | WidgetSegment;
 
+export interface IntentResult {
+  segments: MessageSegment[];
+  isStreaming: boolean;
+  error?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
-  // user messages use content; assistant messages use segments
   content: string;
-  segments: MessageSegment[];
+  segments: MessageSegment[];  // legacy / text-only path
   error?: string;
+  intentName?: string;
+
+  // user bubble extras
+  imageThumb?: string;  // cropped region data URL
+
+  // assistant bubble state machine
+  assistantState?: 'vlm-loading' | 'intent-select' | 'results';
+  intents?: import('@/types/image-upload').Intent[];
+  results?: Record<number, IntentResult>;
+  activeResultIndex?: number;
 }
 
 export function useStreamingChat(apiPath = '/api/chat') {
@@ -35,7 +50,7 @@ export function useStreamingChat(apiPath = '/api/chat') {
 
   const sendMessage = useCallback(async (
     userContent: string,
-    config: { apiKey: string; model: string; baseURL?: string },
+    config: { apiKey: string; model: string; baseURL?: string; subjectOverride?: 'math' | 'chinese' | 'english'; intentName?: string },
   ) => {
     if (!userContent.trim()) return;
 
@@ -51,6 +66,7 @@ export function useStreamingChat(apiPath = '/api/chat') {
 
     setMessages([...nextMessages, {
       id: assistantId, role: 'assistant', content: '', segments: [], error: undefined,
+      intentName: config.intentName,
     }]);
     setIsLoading(true);
     setError(null);
@@ -120,6 +136,7 @@ export function useStreamingChat(apiPath = '/api/chat') {
           model: config.model,
           apiKey: config.apiKey,
           ...(config.baseURL ? { baseURL: config.baseURL } : {}),
+          ...(config.subjectOverride ? { subjectOverride: config.subjectOverride } : {}),
         }),
       });
 
@@ -180,11 +197,155 @@ export function useStreamingChat(apiPath = '/api/chat') {
     abortRef.current?.abort();
   }, []);
 
-  const setMessagesExternal = useCallback((msgs: ChatMessage[]) => {
+  const setMessagesExternal = useCallback((msgs: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
     setMessages(msgs);
     setIsLoading(false);
     setError(null);
   }, []);
 
-  return { messages, setMessages: setMessagesExternal, isLoading, error, sendMessage, stop };
+  // Stream a chat response into an existing assistant message's results[intentIndex]
+  const streamIntoMessage = useCallback(async (
+    messageId: string,
+    intentIndex: number,
+    userContent: string,
+    config: { apiKey: string; model: string; baseURL?: string; subjectOverride?: 'math' | 'chinese' | 'english' },
+  ) => {
+    // Mark target slot as streaming
+    setMessages(prev => prev.map(m => {
+      if (m.id !== messageId) return m;
+      return {
+        ...m,
+        assistantState: 'results',
+        activeResultIndex: intentIndex,
+        results: {
+          ...(m.results ?? {}),
+          [intentIndex]: { segments: [], isStreaming: true },
+        },
+      };
+    }));
+    setIsLoading(true);
+    setError(null);
+
+    abortRef.current = new AbortController();
+
+    const segs: MessageSegment[] = [];
+    let widgetCount = 0;
+
+    function applyEvent(event: Record<string, unknown>) {
+      switch (event.t) {
+        case 'tx': {
+          const v = String(event.v ?? '');
+          if (!v) break;
+          const last = segs[segs.length - 1];
+          if (last?.type === 'text') {
+            last.content += v;
+          } else {
+            segs.push({ type: 'text', content: v, key: `t-${segs.length}` });
+          }
+          break;
+        }
+        case 'widget_start':
+          segs.push({ type: 'widget', title: String(event.title ?? ''), code: '', isStreaming: true, key: `w-${widgetCount}` });
+          break;
+        case 'widget_chunk': {
+          const w = segs.findLast(s => s.type === 'widget') as WidgetSegment | undefined;
+          if (w) w.code += String(event.v ?? '');
+          break;
+        }
+        case 'widget_end': {
+          const w = segs.findLast(s => s.type === 'widget') as WidgetSegment | undefined;
+          if (w) { w.isStreaming = false; widgetCount++; }
+          break;
+        }
+        case 'error':
+          throw new Error(String(event.v ?? 'Unknown error'));
+      }
+    }
+
+    function flush() {
+      const snapshot = segs.map(s => ({ ...s }));
+      setMessages(prev => prev.map(m => {
+        if (m.id !== messageId) return m;
+        return {
+          ...m,
+          results: {
+            ...(m.results ?? {}),
+            [intentIndex]: { segments: snapshot, isStreaming: true },
+          },
+        };
+      }));
+    }
+
+    try {
+      const historyMessages = [{
+        role: 'user' as const,
+        content: userContent,
+      }];
+
+      const res = await fetch(apiPath, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: historyMessages,
+          model: config.model || 'moonshot-v1-8k',
+          apiKey: config.apiKey,
+          subjectOverride: config.subjectOverride,
+          ...(config.baseURL ? { baseURL: config.baseURL } : {}),
+        }),
+        signal: abortRef.current.signal,
+      });
+
+      if (!res.ok) throw new Error(await res.text() || `API error ${res.status}`);
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try { applyEvent(JSON.parse(line)); } catch { /* skip */ }
+        }
+        flush();
+      }
+
+      if (segs.filter(s => s.type === 'text' ? s.content.trim() : s.code.trim()).length === 0) {
+        throw new Error('未收到回复，请重试。');
+      }
+
+      // Mark done
+      setMessages(prev => prev.map(m => {
+        if (m.id !== messageId) return m;
+        return {
+          ...m,
+          results: {
+            ...(m.results ?? {}),
+            [intentIndex]: { segments: segs.map(s => ({ ...s })), isStreaming: false },
+          },
+        };
+      }));
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return;
+      const msg = err instanceof Error ? err.message : String(err);
+      setMessages(prev => prev.map(m => {
+        if (m.id !== messageId) return m;
+        return {
+          ...m,
+          results: {
+            ...(m.results ?? {}),
+            [intentIndex]: { segments: [], isStreaming: false, error: msg },
+          },
+        };
+      }));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [apiPath]);
+
+  return { messages, setMessages: setMessagesExternal, isLoading, error, sendMessage, stop, streamIntoMessage };
 }
