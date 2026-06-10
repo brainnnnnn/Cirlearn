@@ -6,6 +6,23 @@
  * - Plain text → fallback text card
  */
 
+/**
+ * Normalize LaTeX delimiters so remark-math can process them.
+ * Converts \[...\] → $$...$$ and \(...\) → $...$
+ */
+export function normalizeLatex(content: string): string {
+  return content
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, inner) => `$$${inner}$$`)
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, inner) => `$${inner}$`);
+}
+
+// Strip ** that wrap an entire paragraph/sentence (model mistakenly bolds whole blocks).
+// Leaves inline **word** untouched.
+export function stripBlockBold(content: string): string {
+  // Match ** at start of line (optionally after whitespace) wrapping till ** at end
+  return content.replace(/^\s*\*\*([\s\S]+?)\*\*\s*$/gm, (_, inner) => inner.trim());
+}
+
 export interface ParsedSegment {
   type: 'card' | 'widget' | 'text';
   cardType?: string;       // e.g. 'problem_context', 'thinking', etc.
@@ -19,13 +36,16 @@ export interface ParsedSegment {
 // Supports exact match and common variants
 const HEADING_MAP: Record<string, string> = {
   // ── Math ──────────────────────────────────────────────
-  '分步计算': 'step_by_step',
-  '分步解答': 'step_by_step',
-  '列式计算': 'step_by_step',
-  '代入计算': 'step_by_step',
+  '分步解析': 'step_by_step',
+  '分步计算': 'step_by_step',   // legacy alias
+  '分步解答': 'step_by_step',   // legacy alias
+  '列式计算': 'step_by_step',   // legacy alias
+  '代入计算': 'step_by_step',   // legacy alias
   '分步推导': 'step_by_step',   // legacy alias
   '解题步骤': 'step_by_step',   // legacy alias
-  '题目信息': 'problem_context',
+  '题目分析': 'problem_context',
+  '题目解析': 'problem_context',   // legacy alias
+  '题目信息': 'problem_context',   // legacy alias
   '已知条件': 'problem_context',
   '解题思路': 'thinking',
   '思路分析': 'thinking',

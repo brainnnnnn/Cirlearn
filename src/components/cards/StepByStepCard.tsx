@@ -5,24 +5,28 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { CardContainer } from './CardContainer';
+import { normalizeLatex } from '@/lib/heading-parser';
 
 interface StepByStepCardProps {
   content: string;
+  label?: string;
 }
 
-export function StepByStepCard({ content }: StepByStepCardProps) {
+export function StepByStepCard({ content, label }: StepByStepCardProps) {
+  const displayLabel = '分步解析';
+  const displayIcon = '🔢';
   const lines = content.split('\n').filter(l => l.trim());
   const hasNumberedSteps = lines.some(l => /^\d+[.．、]\s*/.test(l.trim()));
-  
+
   if (!hasNumberedSteps) {
     return (
-      <CardContainer label="分步推导" icon="🔢">
+      <CardContainer label={displayLabel} icon={displayIcon}>
         <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed
           [&_p]:my-0.5 [&_p]:text-foreground/85
           [&_strong]:text-foreground [&_strong]:font-semibold
           [&_ul]:mt-1 [&_ul]:space-y-0.5 [&_li]:text-foreground/85
           [&_ol]:mt-1 [&_ol]:space-y-0.5">
-          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{content}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{normalizeLatex(content)}</ReactMarkdown>
         </div>
       </CardContainer>
     );
@@ -43,11 +47,11 @@ export function StepByStepCard({ content }: StepByStepCardProps) {
   if (currentStep) steps.push(currentStep);
 
   return (
-    <CardContainer label="分步推导" icon="🔢">
+    <CardContainer label={displayLabel} icon={displayIcon}>
       <div className="space-y-3">
         {steps.map((step, i) => (
           <div key={i} className="flex gap-3">
-            <div className="shrink-0 flex flex-col items-center">
+            <div className="shrink-0 flex flex-col items-center self-stretch">
               <div className="w-6 h-6 rounded-full bg-white dark:bg-card flex items-center justify-center shadow-sm">
                 <span className="text-[11px] font-bold text-primary">{step.num}</span>
               </div>
@@ -59,7 +63,7 @@ export function StepByStepCard({ content }: StepByStepCardProps) {
               <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed
                 [&_p]:my-0 [&_p]:text-foreground/85
                 [&_strong]:text-foreground [&_strong]:font-semibold">
-                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{step.text}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{normalizeLatex(step.text)}</ReactMarkdown>
               </div>
             </div>
           </div>

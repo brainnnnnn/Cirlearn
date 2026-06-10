@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { CardContainer } from './CardContainer';
+import { normalizeLatex } from '@/lib/heading-parser';
 
 interface ProblemContextCardProps {
   content: string;
@@ -19,7 +20,7 @@ export function ProblemContextCard({ content }: ProblemContextCardProps) {
   const hasStructured = known || ask;
 
   return (
-    <CardContainer label="题目信息" icon="📋">
+    <CardContainer label="题目分析" icon="📋">
       {hasStructured ? (
         <div className="space-y-2">
           {known && (
@@ -27,7 +28,9 @@ export function ProblemContextCard({ content }: ProblemContextCardProps) {
               <span className="shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-white dark:bg-card text-foreground/80 shadow-sm">
                 已知
               </span>
-              <p className="text-[13px] leading-relaxed text-foreground/85">{known}</p>
+              <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed [&_p]:my-0 [&_p]:text-foreground/85">
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{normalizeLatex(known)}</ReactMarkdown>
+              </div>
             </div>
           )}
           {ask && (
@@ -35,13 +38,15 @@ export function ProblemContextCard({ content }: ProblemContextCardProps) {
               <span className="shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-white dark:bg-card text-foreground/80 shadow-sm">
                 所求
               </span>
-              <p className="text-[13px] leading-relaxed text-foreground/85">{ask}</p>
+              <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed [&_p]:my-0 [&_p]:text-foreground/85">
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{normalizeLatex(ask)}</ReactMarkdown>
+              </div>
             </div>
           )}
         </div>
       ) : (
         <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed [&_p]:my-0.5 [&_p]:text-foreground/85">
-          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{content}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{normalizeLatex(content)}</ReactMarkdown>
         </div>
       )}
     </CardContainer>

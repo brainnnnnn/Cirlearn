@@ -1,17 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { parseContent, type ParsedSegment } from '@/lib/heading-parser';
-import {
-  CardContainer,
-  ProblemContextCard,
-  ThinkingCard,
-  StepByStepCard,
-  AnswerCard,
-  FormulaCard,
-  TextCard,
-} from './cards';
-import { WidgetRenderer } from './WidgetRenderer';
+import { parseContent } from '@/lib/heading-parser';
+import { CardSegment } from './cards';
 
 interface IntentOption {
   id: string;
@@ -25,37 +16,6 @@ interface ResultPanelProps {
   intents?: IntentOption[];
   onClose?: () => void;
   onIntentChange?: (intentId: string) => void;
-}
-
-function CardSegment({ segment }: { segment: ParsedSegment }) {
-  if (segment.type === 'widget' && segment.widgetCode) {
-    return (
-      <WidgetRenderer
-        widgetCode={segment.widgetCode}
-        isStreaming={false}
-        title={segment.widgetTitle}
-      />
-    );
-  }
-
-  if (segment.type === 'text') {
-    return <TextCard content={segment.content} />;
-  }
-
-  switch (segment.cardType) {
-    case 'problem_context':
-      return <ProblemContextCard content={segment.content} />;
-    case 'thinking':
-      return <ThinkingCard content={segment.content} />;
-    case 'step_by_step':
-      return <StepByStepCard content={segment.content} />;
-    case 'answer':
-      return <AnswerCard content={segment.content} />;
-    case 'formula':
-      return <FormulaCard content={segment.content} />;
-    default:
-      return <TextCard content={segment.content} label={segment.heading} />;
-  }
 }
 
 export function ResultPanel({ title, content, intents, onClose, onIntentChange }: ResultPanelProps) {

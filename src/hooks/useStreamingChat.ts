@@ -208,7 +208,7 @@ export function useStreamingChat(apiPath = '/api/chat') {
     messageId: string,
     intentIndex: number,
     userContent: string,
-    config: { apiKey: string; model: string; baseURL?: string; subjectOverride?: 'math' | 'chinese' | 'english' },
+    config: { apiKey: string; model: string; baseURL?: string; subjectOverride?: 'math' | 'chinese' | 'english'; imageDataUrl?: string },
   ) => {
     // Mark target slot as streaming
     setMessages(prev => prev.map(m => {
@@ -277,9 +277,17 @@ export function useStreamingChat(apiPath = '/api/chat') {
     }
 
     try {
+      // Build user message — multimodal if image provided
+      const userMessageContent = config.imageDataUrl
+        ? [
+            { type: 'image_url', image_url: { url: config.imageDataUrl } },
+            { type: 'text', text: userContent },
+          ]
+        : userContent;
+
       const historyMessages = [{
         role: 'user' as const,
-        content: userContent,
+        content: userMessageContent,
       }];
 
       const res = await fetch(apiPath, {
@@ -292,7 +300,10 @@ export function useStreamingChat(apiPath = '/api/chat') {
           subjectOverride: config.subjectOverride,
           ...(config.baseURL ? { baseURL: config.baseURL } : {}),
         }),
-        signal: abortRef.current.signal,
+        signal: AbortSignal.any([
+          abortRef.current.signal,
+          AbortSignal.timeout(185_000),
+        ]),
       });
 
       if (!res.ok) throw new Error(await res.text() || `API error ${res.status}`);

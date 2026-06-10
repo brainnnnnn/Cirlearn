@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { WidgetRenderer } from './WidgetRenderer';
-import { parseContent, type ParsedSegment } from '@/lib/heading-parser';
-import { ProblemContextCard, ThinkingCard, StepByStepCard, AnswerCard, FormulaCard, TextCard, WordInfoCard } from './cards';
+import { parseContent } from '@/lib/heading-parser';
+import { CardSegment } from './cards';
 import type { MessageSegment, IntentResult } from '@/hooks/useStreamingChat';
 import type { Intent } from '@/types/image-upload';
 
 interface MessageItemProps {
+  messageId: string;
   role: 'user' | 'assistant';
   content: string;
   segments: MessageSegment[];
@@ -22,34 +23,46 @@ interface MessageItemProps {
   results?: Record<number, IntentResult>;
   activeResultIndex?: number;
   onIntentSelect?: (index: number) => void;
+  onRetry?: (messageId: string, intentIndex: number) => void;
 }
 
-function CardSegment({ segment, isStreaming = false, isLast = false }: { segment: ParsedSegment; isStreaming?: boolean; isLast?: boolean }) {
-  const cursor = isStreaming && isLast
-    ? <span className="inline-block w-1.5 h-3.5 bg-foreground/40 animate-pulse rounded-sm align-middle ml-0.5" />
-    : null;
-  if (segment.type === 'card' && !segment.content.trim()) return null;
 
-  if (segment.type === 'widget' && segment.widgetCode) {
-    return <WidgetRenderer widgetCode={segment.widgetCode} isStreaming={false} title={segment.widgetTitle} />;
-  }
 
-  if (segment.type === 'text') {
-    return <TextCard content={segment.content} />;
-  }
+function SlowHint({ isStreaming }: { isStreaming: boolean }) {
+  const [slow, setSlow] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  switch (segment.cardType) {
-    case 'problem_context': return <ProblemContextCard content={segment.content} />;
-    case 'thinking':        return <ThinkingCard content={segment.content} />;
-    case 'step_by_step':    return <StepByStepCard content={segment.content} />;
-    case 'answer':          return <AnswerCard content={segment.content} />;
-    case 'formula':         return <FormulaCard content={segment.content} />;
-    case 'word_info':       return <WordInfoCard content={segment.content} />;
-    default:                return <TextCard content={segment.content} label={segment.heading} />;
-  }
+  useEffect(() => {
+    if (isStreaming) {
+      timerRef.current = setTimeout(() => setSlow(true), 20000);
+    } else {
+      setSlow(false);
+      if (timerRef.current) clearTimeout(timerRef.current);
+    }
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [isStreaming]);
+
+  if (!slow || !isStreaming) return null;
+  return (
+    <p className="text-[11px] text-muted-foreground/60 px-1 mt-1">
+      正在认真思考中，请耐心等待…
+    </p>
+  );
 }
 
-function ResultCards({ result, isStreaming }: { result: IntentResult; isStreaming: boolean }) {
+function ResultCards({
+  result,
+  isStreaming,
+  messageId,
+  intentIndex,
+  onRetry,
+}: {
+  result: IntentResult;
+  isStreaming: boolean;
+  messageId: string;
+  intentIndex: number;
+  onRetry?: (messageId: string, intentIndex: number) => void;
+}) {
   const fullText = result.segments
     .filter((s): s is Extract<MessageSegment, { type: 'text' }> => s.type === 'text')
     .map(s => s.content).join('');
@@ -60,8 +73,21 @@ function ResultCards({ result, isStreaming }: { result: IntentResult; isStreamin
 
   if (result.error) {
     return (
-      <div className="px-3 py-2.5 rounded-xl bg-destructive/8 border border-destructive/20 text-xs text-destructive">
-        <span className="font-medium">请求失败：</span>{result.error}
+      <div className="space-y-2">
+        <div className="px-3 py-2.5 rounded-xl bg-destructive/8 border border-destructive/20 text-xs text-destructive">
+          <span className="font-medium">请求失败：</span>{result.error}
+        </div>
+        <button
+          type="button"
+          onClick={() => onRetry?.(messageId, intentIndex)}
+          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-white dark:bg-card border border-border/30 text-foreground hover:bg-muted/40 transition-colors"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted-foreground">
+            <polyline points="23 4 23 10 17 10" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+          </svg>
+          重新生成
+        </button>
       </div>
     );
   }
@@ -79,9 +105,9 @@ function ResultCards({ result, isStreaming }: { result: IntentResult; isStreamin
 }
 
 export function MessageItem({
-  role, content, segments, isStreaming = false, error, intentName,
+  messageId, role, content, segments, isStreaming = false, error, intentName,
   imageThumb, assistantState, intents, results, activeResultIndex = 0,
-  onIntentSelect,
+  onIntentSelect, onRetry,
 }: MessageItemProps) {
 
   // ── User bubble ──────────────────────────────────────────────────────────
@@ -118,7 +144,7 @@ export function MessageItem({
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
               </svg>
-              <span className="text-sm text-muted-foreground">意图识别中…</span>
+              <span className="text-sm text-muted-foreground">问题分析中…</span>
             </div>
           </div>
         </div>
@@ -133,7 +159,7 @@ export function MessageItem({
         <div className="max-w-[90%] w-full">
           <div className="rounded-2xl border border-border/20 bg-white dark:bg-card shadow-sm overflow-hidden">
             <div className="px-4 py-2.5 border-b border-border/10">
-              <span className="text-[13px] font-medium text-foreground">识别到 {intents.length} 个意图</span>
+              <span className="text-[13px] font-medium text-foreground">猜你想要：</span>
             </div>
             <div className="p-3 space-y-2">
               {intents.map((intent, i) => (
@@ -210,14 +236,20 @@ export function MessageItem({
             {/* Cards */}
             <div className="px-3 py-3 space-y-2.5 bg-[#F8F8FA] dark:bg-muted/30">
               {activeResult
-                ? <ResultCards result={activeResult} isStreaming={activeStreaming} />
+                ? <>
+                    <ResultCards result={activeResult} isStreaming={activeStreaming} messageId={messageId} intentIndex={activeResultIndex} onRetry={onRetry} />
+                    <SlowHint isStreaming={activeStreaming} />
+                  </>
                 : (
-                  <div className="flex items-center gap-2 py-3 px-1">
-                    <svg className="animate-spin w-4 h-4 text-primary" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                    </svg>
-                    <span className="text-sm text-muted-foreground">生成中…</span>
+                  <div className="flex flex-col gap-1 py-3 px-1">
+                    <div className="flex items-center gap-2">
+                      <svg className="animate-spin w-4 h-4 text-primary shrink-0" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                      </svg>
+                      <span className="text-sm text-muted-foreground">生成中…</span>
+                    </div>
+                    <SlowHint isStreaming={true} />
                   </div>
                 )}
             </div>

@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { CardContainer } from './CardContainer';
+import { normalizeLatex } from '@/lib/heading-parser';
 
 interface ThinkingCardProps {
   content: string;
@@ -19,7 +20,7 @@ export function ThinkingCard({ content }: ThinkingCardProps) {
           [&_strong]:text-foreground [&_strong]:font-semibold
           [&_ul]:mt-1 [&_ul]:space-y-0.5 [&_li]:text-foreground/85
           [&_ol]:mt-1 [&_ol]:space-y-0.5">
-          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{content}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{normalizeLatex(content)}</ReactMarkdown>
         </div>
       </div>
     </CardContainer>

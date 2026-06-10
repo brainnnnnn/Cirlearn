@@ -7,18 +7,18 @@ import rehypeKatex from 'rehype-katex';
 import { CardContainer } from './CardContainer';
 import { normalizeLatex } from '@/lib/heading-parser';
 
-interface AnswerCardProps {
+interface DataAnalysisCardProps {
   content: string;
 }
 
-export function AnswerCard({ content }: AnswerCardProps) {
+export function DataAnalysisCard({ content }: DataAnalysisCardProps) {
   return (
-    <CardContainer label="答案" icon="✅">
-      <div className="rounded-lg bg-white dark:bg-card px-3.5 py-3 shadow-sm">
+    <CardContainer label="数据分析" icon="📈">
+      <div className="relative pl-3 border-l-[3px] border-purple-400/50">
         <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed
-          [&_p]:my-0.5 [&_p]:text-emerald-700 dark:[&_p]:text-emerald-400
-          [&_strong]:text-emerald-800 dark:[&_strong]:text-emerald-300 [&_strong]:font-semibold
-          [&_ul]:mt-1 [&_ul]:space-y-0.5 [&_li]:text-emerald-700
+          [&_p]:my-0.5 [&_p]:text-foreground/85
+          [&_strong]:text-foreground [&_strong]:font-semibold
+          [&_ul]:mt-1 [&_ul]:space-y-0.5 [&_li]:text-foreground/85
           [&_ol]:mt-1 [&_ol]:space-y-0.5">
           <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{normalizeLatex(content)}</ReactMarkdown>
         </div>

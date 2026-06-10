@@ -3,8 +3,8 @@ import './globals.css';
 import 'katex/dist/katex.min.css';
 
 export const metadata: Metadata = {
-  title: 'GenUI Demo',
-  description: 'AI chat with generative UI — show-widget sandbox iframe',
+  title: 'Cirlearn',
+  description: 'K12 AI Tutor — image-based intent recognition with generative card UI',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

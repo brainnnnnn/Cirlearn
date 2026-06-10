@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 const enc = new TextEncoder();
 const DEFAULT_MODEL = 'moonshot-v1-8k';
-const FETCH_TIMEOUT_MS = 120_000;
+const FETCH_TIMEOUT_MS = 180_000;
 
 function ndjson(obj: object) {
   return enc.encode(JSON.stringify(obj) + '\n');
@@ -57,8 +57,15 @@ async function streamText(
 
 // ── Main handler ─────────────────────────────────────────────────────────────
 
-function detectSubject(messages: Array<{ role: string; content: string }>): string {
-  const text = messages.map(m => m.content).join(' ');
+type MessageContent = string | Array<{ type: string; text?: string; image_url?: unknown }>;
+
+function extractText(content: MessageContent): string {
+  if (typeof content === 'string') return content;
+  return content.filter(p => p.type === 'text').map(p => p.text ?? '').join(' ');
+}
+
+function detectSubject(messages: Array<{ role: string; content: MessageContent }>): string {
+  const text = messages.map(m => extractText(m.content)).join(' ');
   const mathKeywords = /数学|计算|方程|函数|几何|证明|求解|导数|积分|矩阵|概率|统计|三角|面积|体积|多项式|因式|平方|立方|勾股|抛物线|坐标|向量|集合|不等式|直线|交点|图像|画出|画图|斜率|截距|二次|一次|正方形|长方形|三角形|菱形|梯形|圆|角|边|\d\s*[\+\-\*\/=]|[=＝]\s*\d|[xy]\s*[=＝]/;
   const chineseKeywords = /语文|汉字|拼音|字词|组词|造句|作文|古诗|文言|部首|笔顺|成语|近义词|反义词|修辞|比喻|排比|词语|段落|中心思想|写法|鉴赏|赏析|怎么写|笔画/;
   const englishKeywords = /英语|英文|单词|语法|时态|听力|口语|音标|从句|passive|tense|grammar|translate|english|[a-zA-Z]{3,}/i;
@@ -78,7 +85,7 @@ function getSystemPrompt(subject: string): string {
 
 export async function POST(req: Request) {
   const { messages, model, apiKey, baseURL, subjectOverride } = await req.json() as {
-    messages: Array<{ role: string; content: string }>;
+    messages: Array<{ role: string; content: MessageContent }>;
     model: string;
     apiKey: string;
     baseURL?: string;
@@ -108,6 +115,18 @@ export async function POST(req: Request) {
 
   const subject = subjectOverride ?? detectSubject(messages);
   const systemPrompt = getSystemPrompt(subject);
+
+  // Debug: log what the generation model receives
+  console.log('[chat input] subject:', subject);
+  console.log('[chat input] system prompt (first 100):', systemPrompt.slice(0, 100));
+  for (const m of messages) {
+    if (typeof m.content === 'string') {
+      console.log(`[chat input] ${m.role}:`, m.content.slice(0, 300));
+    } else {
+      const parts = m.content.map(p => p.type === 'image_url' ? '[IMAGE]' : p.text?.slice(0, 200));
+      console.log(`[chat input] ${m.role} (multimodal):`, parts);
+    }
+  }
 
   // Google: use OpenAI-compatible endpoint
   if (isGoogle) {
@@ -149,7 +168,7 @@ async function runOpenAI(
   baseURL: string | undefined,
   apiKey: string,
   model: string,
-  messages: Array<{ role: string; content: string }>,
+  messages: Array<{ role: string; content: MessageContent }>,
   systemPrompt: string,
   ctrl: Controller,
 ) {
@@ -178,7 +197,7 @@ async function runOpenAI(
 async function runAnthropic(
   apiKey: string,
   model: string,
-  messages: Array<{ role: string; content: string }>,
+  messages: Array<{ role: string; content: MessageContent }>,
   systemPrompt: string,
   ctrl: Controller,
 ) {

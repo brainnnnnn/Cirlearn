@@ -22,9 +22,16 @@ export interface ImageUploadState {
   // Image data
   originalImage: {
     file: File;
-    dataUrl: string;
+    dataUrl: string;  // current page data URL (blob URL for images, canvas dataURL for PDF)
     width: number;
     height: number;
+  } | null;
+
+  // PDF-specific state
+  pdf: {
+    arrayBuffer: ArrayBuffer;
+    totalPages: number;
+    currentPage: number;
   } | null;
   
   croppedImage: {
@@ -57,8 +64,10 @@ export interface VLMProviderConfig {
 export interface Intent {
   name: string;
   description: string;
-  confidence: number;        // 0.0 to 1.0
-  content: string;           // OCR extracted core content
+  confidence: number;
+  content: string;            // OCR extracted core content (raw text)
+  visualDescription: string;  // VLM's description of figures, tables, diagrams
+  pageContext: string;        // grade, chapter, page type inferred from full image
   subject: 'math' | 'chinese' | 'english';
 }
 

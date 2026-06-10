@@ -5,13 +5,14 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { CardContainer } from './CardContainer';
+import { normalizeLatex, stripBlockBold } from '@/lib/heading-parser';
 
 const LABEL_ICONS: Record<string, string> = {
   // Math
-  '概念解释': '📘', '解题思路': '💡', '公式说明': '📐', '题目信息': '📋',
-  '分步计算': '🔢', '列式计算': '🔢', '代入计算': '🔢', '分步推导': '🔢',
+  '概念解释': '📘', '解题思路': '💡', '公式说明': '📐', '题目分析': '📋', '题目解析': '📋', '题目信息': '📋',
+  '分步解析': '🔢', '分步计算': '🔢', '列式计算': '🔢', '代入计算': '🔢', '分步推导': '🔢',
   '解题提示': '👉', '正确答案': '✅', '答案': '✅', '错误分析': '❌',
-  '错因分析': '❌', '方法归纳': '📝', '关键数据': '📊', '数据分析': '📈',
+  '错因分析': '❌', '方法归纳': '📝', '典型示例': '📐', '例题': '📐', '关键数据': '📊', '数据分析': '📈',
   // Chinese
   '拼音': '🔤', '释义': '📖', '组词': '✏️', '近反义词': '↔️',
   '例句': '💬', '声调对比': '🎵', '作者简介': '👤', '原诗': '📜',
@@ -39,7 +40,7 @@ export function TextCard({ content, label }: TextCardProps) {
         [&_strong]:text-foreground [&_strong]:font-semibold
         [&_ul]:mt-1 [&_ul]:space-y-0.5 [&_li]:text-foreground/85
         [&_ol]:mt-1 [&_ol]:space-y-0.5">
-        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{content}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{stripBlockBold(normalizeLatex(content))}</ReactMarkdown>
       </div>
     </CardContainer>
   );

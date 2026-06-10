@@ -67,11 +67,13 @@ export function ChatInterface() {
   const displayModel = model || defaultModel || '未设置';
 
   const [vlmProvider, setVlmProvider] = useState<'kimi' | 'gpt4v'>('kimi');
-  const { state: imageState, uploadImage, setRegion, processWithVLM, selectIntent, reset: resetImage, resetSelection } = useImageUpload();
+  const { state: imageState, uploadImage, goToPage, setRegion, processWithVLM, selectIntent, reset: resetImage, resetSelection } = useImageUpload();
 
   const { messages, setMessages, isLoading, error, sendMessage, stop, streamIntoMessage } = useStreamingChat('/api/chat');
   // ref to the current intent-bubble message id, used by VLM callback
   const intentBubbleIdRef = useRef<string | null>(null);
+  // ref to the cropped image data URL for the current selection
+  const croppedImageRef = useRef<string | null>(null);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -106,29 +108,35 @@ export function ChatInterface() {
   }, []);
 
   // Called when user picks an intent option (or auto-triggered for single intent)
-  function handleIntentSelect(intentIndex: number) {
-    const bubbleId = intentBubbleIdRef.current;
-    const intents = imageState.intents;
-    if (!bubbleId || !intents) return;
+  function handleIntentSelect(messageId: string, intentIndex: number) {
+    const bubble = messages.find(m => m.id === messageId);
+    if (!bubble) return;
 
-    const intent = intents[intentIndex];
+    const intent = bubble.intents?.[intentIndex];
     if (!intent) return;
 
-    // Check if result already cached
-    const existing = messages.find(m => m.id === bubbleId)?.results?.[intentIndex];
-    if (existing && !existing.isStreaming) {
-      // Just switch tab
+    // Cached and successful — just switch tab; retry if previously failed
+    const existing = bubble.results?.[intentIndex];
+    if (existing && !existing.isStreaming && !existing.error) {
       setMessages(prev => prev.map(m =>
-        m.id === bubbleId ? { ...m, assistantState: 'results', activeResultIndex: intentIndex } : m
+        m.id === messageId ? { ...m, assistantState: 'results', activeResultIndex: intentIndex } : m
       ));
       return;
     }
 
-    streamIntoMessage(bubbleId, intentIndex, intent.description + '\n\n' + intent.content, {
+    const parts: string[] = [];
+    parts.push(intent.description);
+    if (intent.content) parts.push(`【题目原文】\n${intent.content}`);
+    if (intent.visualDescription) parts.push(`【图形/表格说明】\n${intent.visualDescription}`);
+    if (intent.pageContext) parts.push(`【页面背景】\n${intent.pageContext}`);
+    const query = parts.join('\n\n');
+
+    streamIntoMessage(messageId, intentIndex, query, {
       apiKey,
       model,
       baseURL: baseURL.trim() || undefined,
       subjectOverride: intent.subject,
+      imageDataUrl: croppedImageRef.current ?? undefined,
     });
   }
 
@@ -147,7 +155,7 @@ export function ChatInterface() {
 
     // Auto-fire if single intent
     if (imageState.intents.length === 1) {
-      handleIntentSelect(0);
+      handleIntentSelect(bubbleId, 0);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageState.stage]);
@@ -200,6 +208,7 @@ export function ChatInterface() {
     const userId = `u-${Date.now()}`;
     const assistantId = `a-${Date.now() + 1}`;
     intentBubbleIdRef.current = assistantId;
+    croppedImageRef.current = croppedDataUrl;
 
     // Add user bubble (thumbnail) + assistant bubble (vlm-loading)
     setMessages(prev => [
@@ -246,39 +255,57 @@ export function ChatInterface() {
       {/* LEFT PANEL: Image Upload & Preview */}
       <div className="w-1/2 border-r border-border/50 flex flex-col">
         {/* Left Panel Header */}
-        <div className="px-4 h-[45px] flex items-center border-b border-border/50 shrink-0">
+        <div className="px-4 h-[45px] flex items-center justify-between border-b border-border/50 shrink-0">
           <h2 className="text-sm font-semibold">图片识别</h2>
+          {imageState.originalImage && (
+            <ImageUploadButton onImageSelect={handleImageSelect} disabled={isLoading} compact />
+          )}
         </div>
 
         {/* Image Display Area */}
         <div className="flex-1 overflow-auto relative">
           {!imageState.originalImage ? (
-            /* Empty state - upload prompt */
-            <div className="h-full flex flex-col items-center justify-center gap-4 text-center">
-              <div className="text-4xl text-muted-foreground/40">📸</div>
-              <div>
-                <p className="text-sm font-medium text-foreground mb-1">上传图片开始</p>
-                <p className="text-xs text-muted-foreground">
-                  支持 JPG、PNG、WebP、HEIC 格式
-                </p>
-              </div>
-              <ImageUploadButton
-                onImageSelect={handleImageSelect}
-                disabled={isLoading}
-              />
+            /* Empty state */
+            <div className="h-full flex flex-col items-center justify-center gap-4 text-center p-6">
+              {imageState.isProcessing ? (
+                <>
+                  <svg className="animate-spin w-8 h-8 text-primary" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                  </svg>
+                  <p className="text-sm text-muted-foreground">PDF 加载中…</p>
+                </>
+              ) : (
+                <>
+                  <div className="text-4xl text-muted-foreground/40">📄</div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground mb-1">上传图片或 PDF</p>
+                    <p className="text-xs text-muted-foreground">支持 JPG、PNG、WebP、HEIC、PDF</p>
+                  </div>
+                  <ImageUploadButton onImageSelect={handleImageSelect} disabled={isLoading} />
+                </>
+              )}
             </div>
           ) : (
-            /* Image preview with region selector */
+            /* Image / PDF page preview */
             <div className="relative w-full">
+              {imageState.isProcessing && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-sm">
+                  <svg className="animate-spin w-8 h-8 text-primary" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                  </svg>
+                </div>
+              )}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 ref={imageRef}
                 src={imageState.originalImage.dataUrl}
                 alt="上传的题目图片"
-                className="block w-full h-auto object-contain rounded-lg"
+                className="block w-full h-auto object-contain"
                 draggable={false}
               />
-              {imageState.originalImage && !imageState.isProcessing && imageState.stage !== 'processing' && (
+              {!imageState.isProcessing && imageState.stage !== 'processing' && (
                 <RegionSelector
                   imageRef={imageRef}
                   onSelectionComplete={handleRegionSelect}
@@ -288,6 +315,31 @@ export function ChatInterface() {
             </div>
           )}
         </div>
+
+        {/* PDF page navigation */}
+        {imageState.pdf && imageState.pdf.totalPages > 1 && (
+          <div className="shrink-0 border-t border-border/50 px-4 py-2 flex items-center justify-between">
+            <button
+              type="button"
+              disabled={imageState.pdf.currentPage <= 1 || imageState.isProcessing}
+              onClick={() => goToPage(imageState.pdf!.currentPage - 1)}
+              className="w-7 h-7 rounded-lg border border-border/50 flex items-center justify-center hover:bg-muted/50 disabled:opacity-30 transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg>
+            </button>
+            <span className="text-xs text-muted-foreground">
+              {imageState.isProcessing ? '加载中…' : `${imageState.pdf.currentPage} / ${imageState.pdf.totalPages}`}
+            </span>
+            <button
+              type="button"
+              disabled={imageState.pdf.currentPage >= imageState.pdf.totalPages || imageState.isProcessing}
+              onClick={() => goToPage(imageState.pdf!.currentPage + 1)}
+              className="w-7 h-7 rounded-lg border border-border/50 flex items-center justify-center hover:bg-muted/50 disabled:opacity-30 transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg>
+            </button>
+          </div>
+        )}
 
         {/* VLM error panel — only shown when imageState has an error */}
         {imageState.stage === 'uploaded' && imageState.error && (
@@ -515,6 +567,7 @@ export function ChatInterface() {
             return (
               <MessageItem
                 key={msg.id}
+                messageId={msg.id}
                 role={msg.role}
                 content={msg.content}
                 segments={msg.segments}
@@ -526,7 +579,8 @@ export function ChatInterface() {
                 intents={msg.intents}
                 results={msg.results}
                 activeResultIndex={msg.activeResultIndex}
-                onIntentSelect={handleIntentSelect}
+                onIntentSelect={(intentIndex) => handleIntentSelect(msg.id, intentIndex)}
+                onRetry={handleIntentSelect}
               />
             );
           })}
