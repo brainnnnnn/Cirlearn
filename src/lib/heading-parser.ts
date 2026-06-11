@@ -59,6 +59,7 @@ const HEADING_MAP: Record<string, string> = {
   '错因分析': 'error_analysis',
   '方法归纳': 'method_summary',
   '概念解释': 'concept',
+  '知识点': 'knowledge_point',
   '典型示例': 'example',
   '关键数据': 'key_data',
   '数据分析': 'data_analysis',

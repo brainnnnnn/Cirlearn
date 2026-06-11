@@ -27,9 +27,11 @@ interface MessageItemProps {
 }
 
 function getDisplayName(intent: Intent, totalIntents: number, intentIndex: number): string {
-  if (totalIntents > 1) {
+  // 多题场景：模型已输出"第1题""第2题"，按顺序显示
+  if (totalIntents > 1 && /第[1-9]题/.test(intent.name)) {
     return `第${intentIndex + 1}题`;
   }
+  // 单题但模型错误输出了"第1题"，用 description 兜底
   if (totalIntents === 1 && intent.name === '第1题' && intent.description) {
     const derived = intent.description.split(/[：:，,。]/)[0].trim();
     return derived || intent.name;
