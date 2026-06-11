@@ -161,6 +161,20 @@ export function ChatInterface() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageState.stage]);
 
+  // When VLM fails, show error in the assistant bubble
+  useEffect(() => {
+    if (imageState.stage !== 'uploaded' || !imageState.error) return;
+    const bubbleId = intentBubbleIdRef.current;
+    if (!bubbleId) return;
+
+    setMessages(prev => prev.map(m =>
+      m.id === bubbleId
+        ? { ...m, assistantState: 'results', error: imageState.error ?? undefined }
+        : m
+    ));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageState.error, imageState.stage]);
+
   function toggleTheme() {
     const next = !isDark;
     setIsDark(next);

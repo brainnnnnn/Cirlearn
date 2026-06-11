@@ -26,7 +26,10 @@ interface MessageItemProps {
   onRetry?: (messageId: string, intentIndex: number) => void;
 }
 
-function getDisplayName(intent: Intent, totalIntents: number): string {
+function getDisplayName(intent: Intent, totalIntents: number, intentIndex: number): string {
+  if (totalIntents > 1) {
+    return `第${intentIndex + 1}题`;
+  }
   if (totalIntents === 1 && intent.name === '第1题' && intent.description) {
     const derived = intent.description.split(/[：:，,。]/)[0].trim();
     return derived || intent.name;
@@ -147,12 +150,23 @@ export function MessageItem({
       <div className="flex justify-start mb-4">
         <div className="max-w-[90%] w-full">
           <div className="rounded-2xl border border-border/20 bg-white dark:bg-card shadow-sm overflow-hidden">
-            <div className="flex items-center gap-3 px-4 py-4">
-              <svg className="animate-spin w-4 h-4 text-primary shrink-0" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-              </svg>
-              <span className="text-sm text-muted-foreground">问题分析中…</span>
+            <div className="flex items-center justify-between px-4 py-3">
+              <div className="flex items-center gap-3">
+                <svg className="animate-spin w-4 h-4 text-primary shrink-0" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                </svg>
+                <span className="text-sm text-muted-foreground">问题分析中…</span>
+              </div>
+              {onRetry && (
+                <button
+                  type="button"
+                  onClick={() => onRetry(messageId, 0)}
+                  className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-muted transition-colors"
+                >
+                  取消
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -178,7 +192,7 @@ export function MessageItem({
                   className="w-full text-left rounded-xl border border-border/50 px-3 py-2.5 hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:border-blue-300 transition-colors"
                 >
                   <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-xs font-medium text-foreground">{getDisplayName(intent, intents.length)}</span>
+                    <span className="text-xs font-medium text-foreground">{getDisplayName(intent, intents.length, i)}</span>
                     <span className="text-[10px] text-muted-foreground/60">{Math.round(intent.confidence * 100)}%</span>
                   </div>
                   <p className="text-xs text-muted-foreground">{intent.description}</p>
@@ -198,7 +212,8 @@ export function MessageItem({
     const rawName = intents[activeResultIndex]?.name ?? intentName ?? 'AI Tutor';
     const activeIntentName = getDisplayName(
       { name: rawName, description: intents[activeResultIndex]?.description ?? '' } as Intent,
-      intents.length
+      intents.length,
+      activeResultIndex
     );
 
     return (
@@ -238,7 +253,7 @@ export function MessageItem({
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
                         </svg>
                       )}
-                      {getDisplayName(intent, intents.length)}
+                      {getDisplayName(intent, intents.length, i)}
                     </span>
                   </button>
                 ))}
