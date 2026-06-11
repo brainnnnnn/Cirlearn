@@ -14,8 +14,8 @@ interface OptionAnalysisCardProps {
 export function OptionAnalysisCard({ content }: OptionAnalysisCardProps) {
   const lines = content.split('\n').filter(l => l.trim());
 
-  // Try to extract A/B/C/D options with analysis
-  const options: { letter: string; text: string; isCorrect?: boolean }[] = [];
+  // Extract A/B/C/D options with analysis text
+  const options: { letter: string; text: string }[] = [];
   let buffer = '';
 
   for (const line of lines) {
@@ -25,9 +25,7 @@ export function OptionAnalysisCard({ content }: OptionAnalysisCardProps) {
         const last = options[options.length - 1];
         if (last) last.text += '\n' + buffer;
       }
-      const text = match[2];
-      const isCorrect = /正确|✓|✅|对/.test(text) || /答案/.test(text);
-      options.push({ letter: match[1], text, isCorrect });
+      options.push({ letter: match[1], text: match[2] });
       buffer = '';
     } else if (options.length > 0) {
       buffer += (buffer ? '\n' : '') + line;
@@ -40,7 +38,7 @@ export function OptionAnalysisCard({ content }: OptionAnalysisCardProps) {
   // If no structured options found, fall back to normal rendering
   if (options.length === 0) {
     return (
-      <CardContainer label="选项解析" icon="🔎">
+      <CardContainer label="选项分析" icon="🔎">
         <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed
           [&_p]:my-0.5 [&_p]:text-foreground/85
           [&_strong]:text-foreground [&_strong]:font-semibold
@@ -53,30 +51,22 @@ export function OptionAnalysisCard({ content }: OptionAnalysisCardProps) {
   }
 
   return (
-    <CardContainer label="选项解析" icon="🔎">
+    <CardContainer label="选项分析" icon="🔎">
       <div className="space-y-2">
         {options.map((opt) => (
           <div
             key={opt.letter}
-            className={`flex gap-2.5 rounded-lg px-3 py-2 border ${
-              opt.isCorrect
-                ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/40'
-                : 'bg-white dark:bg-card border-border/30'
-            }`}
+            className="flex gap-3 rounded-lg px-3 py-2.5 bg-white dark:bg-card border border-border/40 hover:border-border/70 transition-colors"
           >
-            <span
-              className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${
-                opt.isCorrect
-                  ? 'bg-emerald-500 text-white'
-                  : 'bg-muted text-muted-foreground'
-              }`}
-            >
+            <span className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
               {opt.letter}
             </span>
-            <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed
-              [&_p]:my-0 [&_p]:text-foreground/85
-              [&_strong]:text-foreground [&_strong]:font-semibold">
-              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{normalizeLatex(opt.text)}</ReactMarkdown>
+            <div className="flex-1 min-w-0">
+              <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed
+                [&_p]:my-0 [&_p]:text-foreground/85
+                [&_strong]:text-foreground [&_strong]:font-semibold">
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{normalizeLatex(opt.text)}</ReactMarkdown>
+              </div>
             </div>
           </div>
         ))}

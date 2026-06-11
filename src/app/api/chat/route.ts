@@ -24,6 +24,7 @@ async function streamText(
   let buf = '';
   let assistantText = '';
   let chunkCount = 0;
+  let firstChunk = true;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -40,8 +41,16 @@ async function streamText(
       let json: Record<string, unknown>;
       try { json = JSON.parse(data); } catch { continue; }
 
+      if (firstChunk) {
+        console.log('[streamText first chunk]', JSON.stringify(json).slice(0, 300));
+        firstChunk = false;
+      }
+
       const choice = (json.choices as Array<Record<string, unknown>>)?.[0];
-      if (!choice) continue;
+      if (!choice) {
+        console.log('[streamText no choice]', JSON.stringify(json).slice(0, 200));
+        continue;
+      }
       const delta = (choice.delta ?? {}) as Record<string, unknown>;
 
       if (typeof delta.content === 'string' && delta.content) {
@@ -52,6 +61,7 @@ async function streamText(
     }
   }
 
+  console.log('[streamText done] chunks:', chunkCount, 'text length:', assistantText.length);
   return assistantText;
 }
 
@@ -175,11 +185,16 @@ async function runOpenAI(
   if (!baseURL) throw new Error('baseURL is required。请填入API Base URL，例如：https://api.moonshot.cn/v1');
   const url = baseURL.replace(/\/$/, '') + '/chat/completions';
   const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` };
+  const resolvedModel = model || DEFAULT_MODEL;
+  // Kimi context window limits: 8k→8192 total, 32k→32768 total.
+  // Use prefix match to handle model variants like moonshot-v1-8k-vision-preview.
+  const maxTokens = resolvedModel.includes('8k') ? 2000 : resolvedModel.includes('32k') ? 4000 : 4000;
+
   const bodyObj = {
-    model: model || DEFAULT_MODEL,
+    model: resolvedModel,
     messages: [{ role: 'system', content: systemPrompt }, ...messages],
     stream: true,
-    max_tokens: 4000,
+    max_tokens: maxTokens,
   };
 
   const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(bodyObj), signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });

@@ -125,18 +125,19 @@ export function ChatInterface() {
     }
 
     const parts: string[] = [];
-    parts.push(intent.description);
     if (intent.content) parts.push(`【题目原文】\n${intent.content}`);
     if (intent.visualDescription) parts.push(`【图形/表格说明】\n${intent.visualDescription}`);
     if (intent.pageContext) parts.push(`【页面背景】\n${intent.pageContext}`);
+    parts.push(`【学习目标】${intent.description}`);
     const query = parts.join('\n\n');
 
+    const hasMultipleIntents = (bubble.intents?.length ?? 0) > 1;
     streamIntoMessage(messageId, intentIndex, query, {
       apiKey,
       model,
       baseURL: baseURL.trim() || undefined,
       subjectOverride: intent.subject,
-      imageDataUrl: croppedImageRef.current ?? undefined,
+      imageDataUrl: hasMultipleIntents ? undefined : (croppedImageRef.current ?? undefined),
     });
   }
 

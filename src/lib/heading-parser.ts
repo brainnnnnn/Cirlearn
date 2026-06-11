@@ -69,8 +69,8 @@ const HEADING_MAP: Record<string, string> = {
   '组词': 'word_group',
   '近反义词': 'synonyms',
   '例句': 'example_sentence',
-  '声调对比': 'pronunciation',
   '作者简介': 'author_intro',
+  '作者': 'author_intro',
   '原诗': 'original_text',
   '译文': 'translation',
   '原文译文': 'text_pair',      // legacy alias
@@ -78,13 +78,16 @@ const HEADING_MAP: Record<string, string> = {
   '原文索引': 'text_quote',
   '核心要点': 'highlights',
   '要点提炼': 'highlights',     // legacy alias
+  '审题分析': 'writing_analysis',
+  '结构框架': 'writing_structure',
+  '素材推荐': 'writing_material',
   '仿写建议': 'writing_tip',
   '内容简介': 'book_intro',
   '文学影响': 'book_intro',
-  '图片描述': 'image_desc',
-  '图文关联': 'image_relation',
   '背景知识': 'background',
   '字词信息': 'word_info',      // legacy alias
+  '典故': 'allusion',
+  '典故解析': 'allusion',
 
   // ── English ───────────────────────────────────────────
   '音标': 'phonetic',
@@ -95,6 +98,7 @@ const HEADING_MAP: Record<string, string> = {
   '语法分析': 'grammar',
   '考点分析': 'exam_point',
   '语法规则': 'grammar',
+  '选项解析': 'option_analysis',
   '选项分析': 'option_analysis',
   '原文定位': 'text_quote',
   '解题分析': 'analysis',
@@ -113,33 +117,38 @@ function buildWidgetCode(parsed: Record<string, unknown>): string | null {
 
   // Built-in widget types the model can request by name
   if (parsed.type === 'stroke-order') {
-    const char = String(parsed.data ?? parsed.char ?? '');
-    if (!char) return null;
-    return `<div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:16px;font-family:sans-serif">
-  <div id="stroke-msg" style="font-size:13px;color:#666">加载笔顺动画中…</div>
-  <div id="stroke-container"></div>
-  <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"><\/script>
+    const raw = String(parsed.data ?? parsed.char ?? '');
+    // Filter to CJK characters only, deduplicate while preserving order
+    const chars = [...new Set([...raw].filter(c => /\p{Script=Han}/u.test(c)))];
+    if (chars.length === 0) return null;
+
+    // Unique prefix per widget instance to avoid id/function-name collisions
+    const uid = Math.random().toString(36).slice(2, 7);
+
+    const slots = chars.map((c, i) => `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+      <div id="${uid}-${i}" style="width:120px;height:120px"></div>
+      <span style="font-size:14px;color:#374151;font-family:serif">${c}</span>
+    </div>`).join('');
+
+    const inits = chars.map((c, i) =>
+      `HanziWriter.create(document.getElementById('${uid}-${i}'),'${c}',{width:120,height:120,padding:8,strokeColor:'#2563EB',radicalColor:'#1D4ED8',delayBetweenStrokes:300,strokeAnimationSpeed:1.2,showCharacter:false,showOutline:true}).loopCharacterAnimation();`
+    ).join('\n      ');
+
+    return `<div style="font-family:sans-serif;padding:12px 8px">
+  <div id="${uid}-msg" style="font-size:12px;color:#9ca3af;text-align:center;margin-bottom:8px">加载笔顺动画中…</div>
+  <div id="${uid}-box" style="display:flex;flex-wrap:wrap;gap:12px">${slots}
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js" onload="init_${uid}()" ><\/script>
   <script>
-    (function() {
-      var container = document.getElementById('stroke-container');
-      var msg = document.getElementById('stroke-msg');
-      if (typeof HanziWriter === 'undefined') {
-        msg.textContent = '笔顺库加载失败，请检查网络';
-        return;
-      }
-      msg.textContent = '';
-      var writer = HanziWriter.create(container, '${char}', {
-        width: 200, height: 200,
-        padding: 10,
-        strokeColor: '#2563EB',
-        radicalColor: '#1D4ED8',
-        delayBetweenStrokes: 300,
-        strokeAnimationSpeed: 1.2,
-        showCharacter: false,
-        showOutline: true,
-      });
-      writer.loopCharacterAnimation();
-    })();
+    function init_${uid}(){
+      var msg = document.getElementById('${uid}-msg');
+      var box = document.getElementById('${uid}-box');
+      if(msg) msg.style.display='none';
+      if(box) box.style.justifyContent = ${chars.length} <= 8 ? 'center' : 'flex-start';
+      ${inits}
+    }
+    if(typeof HanziWriter!=='undefined') init_${uid}();
   <\/script>
 </div>`;
   }
@@ -280,7 +289,9 @@ export function getCardLabel(cardType: string): string {
     highlights: '要点提炼',
     analysis: '题目分析',
     grammar: '语法分析',
-    pronunciation: '发音指导',
+    writing_analysis: '审题分析',
+    writing_structure: '结构框架',
+    writing_material: '素材推荐',
     writing_support: '写作辅助',
     text: '',
   };
