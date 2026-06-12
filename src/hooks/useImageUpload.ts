@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { processUploadedFile } from '@/lib/image-utils';
 import { loadPDF, renderPDFPage } from '@/lib/pdf-utils';
 import type { ImageUploadState, VLMProviderConfig, Rectangle } from '@/types/image-upload';
 

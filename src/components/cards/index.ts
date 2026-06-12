@@ -13,4 +13,5 @@ export { OptionAnalysisCard } from './OptionAnalysisCard';
 export { DataAnalysisCard } from './DataAnalysisCard';
 export { ExampleCard } from './ExampleCard';
 export { AllusionCard } from './AllusionCard';
+export { CompletionCard } from './CompletionCard';
 export { CardSegment } from './CardSegment';

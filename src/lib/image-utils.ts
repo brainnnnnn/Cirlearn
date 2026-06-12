@@ -331,6 +331,28 @@ export function extractBase64FromDataURL(dataURL: string): string {
  * Process an uploaded file: validate, convert to base64, get dimensions
  * Requirements: 1.2, 1.3, 9.1, 9.2, 9.3, 9.4
  */
+/**
+ * Convert a blob URL (e.g. URL.createObjectURL result) into a base64 data URL
+ * so it can be sent to server-side APIs.
+ */
+export async function blobUrlToDataUrl(blobUrl: string): Promise<string> {
+  const img = new Image();
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error('Failed to load blob image'));
+    img.src = blobUrl;
+  });
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  canvas.getContext('2d')!.drawImage(img, 0, 0);
+  return canvas.toDataURL('image/jpeg', 0.7);
+}
+
+/**
+ * Process an uploaded file: validate, convert to base64, get dimensions
+ * Requirements: 1.2, 1.3, 9.1, 9.2, 9.3, 9.4
+ */
 export async function processUploadedFile(file: File): Promise<{
   width: number;
   height: number;

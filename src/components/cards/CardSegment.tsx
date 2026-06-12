@@ -16,6 +16,7 @@ import {
   DataAnalysisCard,
   ExampleCard,
   AllusionCard,
+  CompletionCard,
 } from './';
 import { WidgetRenderer } from '../WidgetRenderer';
 
@@ -86,6 +87,9 @@ export function CardSegment({ segment, isStreaming = false, isLast = false }: Ca
       break;
     case 'allusion':
       card = <AllusionCard content={segment.content} />;
+      break;
+    case 'completion':
+      card = <CompletionCard content={segment.content} />;
       break;
     default:
       card = <TextCard content={segment.content} label={segment.heading} />;

@@ -83,6 +83,8 @@ const HEADING_MAP: Record<string, string> = {
   '结构框架': 'writing_structure',
   '素材推荐': 'writing_material',
   '仿写建议': 'writing_tip',
+  '润色': 'polish',
+  '补写': 'completion',
   '内容简介': 'book_intro',
   '文学影响': 'book_intro',
   '背景知识': 'background',

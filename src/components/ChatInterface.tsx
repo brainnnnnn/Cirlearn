@@ -5,6 +5,7 @@ import { MessageItem } from './MessageItem';
 import { useStreamingChat } from '@/hooks/useStreamingChat';
 import type { ChatMessage } from '@/hooks/useStreamingChat';
 import { useImageUpload } from '@/hooks/useImageUpload';
+import { blobUrlToDataUrl } from '@/lib/image-utils';
 import { ImageUploadButton } from './ImageUploadButton';
 import { RegionSelector } from './RegionSelector';
 import type { VLMProviderConfig, Rectangle } from '@/types/image-upload';
@@ -74,6 +75,8 @@ export function ChatInterface() {
   const intentBubbleIdRef = useRef<string | null>(null);
   // ref to the cropped image data URL for the current selection
   const croppedImageRef = useRef<string | null>(null);
+  // ref to the full page image data URL (for reading comprehension context)
+  const fullPageImageRef = useRef<string | null>(null);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -138,6 +141,7 @@ export function ChatInterface() {
       baseURL: baseURL.trim() || undefined,
       subjectOverride: intent.subject,
       imageDataUrl: hasMultipleIntents ? undefined : (croppedImageRef.current ?? undefined),
+      fullPageImageUrl: hasMultipleIntents ? undefined : (fullPageImageRef.current ?? undefined),
     });
   }
 
@@ -224,6 +228,17 @@ export function ChatInterface() {
     const assistantId = `a-${Date.now() + 1}`;
     intentBubbleIdRef.current = assistantId;
     croppedImageRef.current = croppedDataUrl;
+
+    const origSrc = imageState.originalImage?.dataUrl ?? null;
+    if (origSrc && origSrc.startsWith('blob:')) {
+      try {
+        fullPageImageRef.current = await blobUrlToDataUrl(origSrc);
+      } catch {
+        fullPageImageRef.current = null;
+      }
+    } else {
+      fullPageImageRef.current = origSrc;
+    }
 
     // Add user bubble (thumbnail) + assistant bubble (vlm-loading)
     setMessages(prev => [

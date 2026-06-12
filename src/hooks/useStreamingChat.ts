@@ -208,7 +208,7 @@ export function useStreamingChat(apiPath = '/api/chat') {
     messageId: string,
     intentIndex: number,
     userContent: string,
-    config: { apiKey: string; model: string; baseURL?: string; subjectOverride?: 'math' | 'chinese' | 'english'; imageDataUrl?: string },
+    config: { apiKey: string; model: string; baseURL?: string; subjectOverride?: 'math' | 'chinese' | 'english'; imageDataUrl?: string; fullPageImageUrl?: string },
   ) => {
     // Mark target slot as streaming
     setMessages(prev => prev.map(m => {
@@ -278,11 +278,16 @@ export function useStreamingChat(apiPath = '/api/chat') {
 
     try {
       // Build user message — multimodal if image provided
-      const userMessageContent = config.imageDataUrl
-        ? [
-            { type: 'image_url', image_url: { url: config.imageDataUrl } },
-            { type: 'text', text: userContent },
-          ]
+      // Full page image first (context), then cropped region (focus)
+      const imageParts: Array<{ type: string; image_url: { url: string } }> = [];
+      if (config.fullPageImageUrl) {
+        imageParts.push({ type: 'image_url', image_url: { url: config.fullPageImageUrl } });
+      }
+      if (config.imageDataUrl) {
+        imageParts.push({ type: 'image_url', image_url: { url: config.imageDataUrl } });
+      }
+      const userMessageContent = imageParts.length > 0
+        ? [...imageParts, { type: 'text', text: userContent }]
         : userContent;
 
       const historyMessages = [{
