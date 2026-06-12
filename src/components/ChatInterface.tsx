@@ -135,6 +135,7 @@ export function ChatInterface() {
     }
 
     const parts: string[] = [];
+    parts.push(`【意图】${intent.name}`);
     if (intent.content) parts.push(`【题目原文】\n${intent.content}`);
     if (intent.visualDescription) parts.push(`【图形/表格说明】\n${intent.visualDescription}`);
     if (intent.pageContext) parts.push(`【页面背景】\n${intent.pageContext}`);

@@ -80,7 +80,7 @@ export function CardSegment({ segment, isStreaming = false, isLast = false }: Ca
       card = <DataAnalysisCard content={segment.content} />;
       break;
     case 'word_info':
-      card = <WordInfoCard content={segment.content} />;
+      card = <WordInfoCard content={segment.content} label={segment.heading} icon={segment.heading ? (segment.heading === '释义' ? '📖' : undefined) : undefined} />;
       break;
     case 'example':
       card = <ExampleCard content={segment.content} />;
