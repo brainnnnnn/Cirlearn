@@ -148,7 +148,7 @@ function buildWidgetCode(parsed: Record<string, unknown>): string | null {
       var msg = document.getElementById('${uid}-msg');
       var box = document.getElementById('${uid}-box');
       if(msg) msg.style.display='none';
-      if(box) box.style.justifyContent = ${chars.length} <= 8 ? 'center' : 'flex-start';
+      if(box) box.style.justifyContent = ${chars.length} <= 4 ? 'center' : 'flex-start';
       ${inits}
     }
     if(typeof HanziWriter!=='undefined') init_${uid}();

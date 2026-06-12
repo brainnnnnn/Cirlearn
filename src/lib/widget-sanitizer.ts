@@ -37,6 +37,14 @@ export const CDN_WHITELIST = [
 const DANGEROUS_TAGS = /<(iframe|object|embed|meta|link|base|form)[\s>][\s\S]*?<\/\1>/gi;
 const DANGEROUS_VOID = /<(iframe|object|embed|meta|link|base)\b[^>]*\/?>/gi;
 
+function isAllowedStylesheetLink(tag: string): boolean {
+  const rel = /rel\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']*))/i.exec(tag);
+  const href = /href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']*))/i.exec(tag);
+  const relValue = (rel?.[1] ?? rel?.[2] ?? rel?.[3] ?? '').toLowerCase();
+  const hrefValue = href?.[1] ?? href?.[2] ?? href?.[3] ?? '';
+  return relValue === 'stylesheet' && CDN_WHITELIST.some(d => hrefValue.includes(d));
+}
+
 /**
  * Sanitize widget HTML for streaming preview (no interactivity).
  * Strips: dangerous tags, ALL on* handlers, ALL scripts, js/data URLs.
@@ -67,9 +75,19 @@ export function sanitizeForStreaming(html: string): string {
  * Only strips tags that could nest/break out of the sandbox.
  */
 export function sanitizeForIframe(html: string): string {
-  return html
+  // Preserve allowed stylesheet links from CDN whitelist, then restore them
+  const preserved: string[] = [];
+  const withPlaceholders = html.replace(/<link\b[^>]*\/?>/gi, (tag) => {
+    if (isAllowedStylesheetLink(tag)) {
+      preserved.push(tag);
+      return `<!--__STYLESHEET_LINK_${preserved.length - 1}__-->`;
+    }
+    return '';
+  });
+  const sanitized = withPlaceholders
     .replace(DANGEROUS_TAGS, '')
     .replace(DANGEROUS_VOID, '');
+  return sanitized.replace(/<!--__STYLESHEET_LINK_(\d+)__-->/g, (_, i) => preserved[parseInt(i, 10)] ?? '');
 }
 
 // ── Receiver iframe srcdoc ────────────────────────────────────────────────
