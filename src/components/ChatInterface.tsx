@@ -69,6 +69,13 @@ export function ChatInterface() {
 
   const [vlmProvider, setVlmProvider] = useState<'kimi' | 'gpt4v'>('kimi');
   const { state: imageState, uploadImage, goToPage, setRegion, processWithVLM, selectIntent, reset: resetImage, resetSelection } = useImageUpload();
+  const [pageInput, setPageInput] = useState('');
+
+  useEffect(() => {
+    if (imageState.pdf) {
+      setPageInput(String(imageState.pdf.currentPage));
+    }
+  }, [imageState.pdf?.currentPage]);
 
   const { messages, setMessages, isLoading, error, sendMessage, stop, streamIntoMessage } = useStreamingChat('/api/chat');
   // ref to the current intent-bubble message id, used by VLM callback
@@ -348,7 +355,7 @@ export function ChatInterface() {
 
         {/* PDF page navigation */}
         {imageState.pdf && imageState.pdf.totalPages > 1 && (
-          <div className="shrink-0 border-t border-border/50 px-4 py-2 flex items-center justify-between">
+          <div className="shrink-0 border-t border-border/50 px-4 py-3 min-h-[66px] flex items-center justify-between">
             <button
               type="button"
               disabled={imageState.pdf.currentPage <= 1 || imageState.isProcessing}
@@ -357,9 +364,45 @@ export function ChatInterface() {
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg>
             </button>
-            <span className="text-xs text-muted-foreground">
-              {imageState.isProcessing ? '加载中…' : `${imageState.pdf.currentPage} / ${imageState.pdf.totalPages}`}
-            </span>
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              {imageState.isProcessing ? (
+                <span>加载中…</span>
+              ) : (
+                <>
+                  <input
+                    type="number"
+                    min={1}
+                    max={imageState.pdf.totalPages}
+                    value={pageInput}
+                    onChange={e => setPageInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        const page = parseInt(pageInput, 10);
+                        if (!Number.isNaN(page)) {
+                          const clamped = Math.max(1, Math.min(imageState.pdf!.totalPages, page));
+                          goToPage(clamped);
+                        }
+                      }
+                    }}
+                    onBlur={() => {
+                      const page = parseInt(pageInput, 10);
+                      if (!Number.isNaN(page)) {
+                        const clamped = Math.max(1, Math.min(imageState.pdf!.totalPages, page));
+                        if (clamped !== imageState.pdf!.currentPage) {
+                          goToPage(clamped);
+                        } else {
+                          setPageInput(String(imageState.pdf!.currentPage));
+                        }
+                      } else {
+                        setPageInput(String(imageState.pdf!.currentPage));
+                      }
+                    }}
+                    className="w-10 h-6 rounded border border-border/50 bg-background text-center text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <span>/ {imageState.pdf.totalPages}</span>
+                </>
+              )}
+            </div>
             <button
               type="button"
               disabled={imageState.pdf.currentPage >= imageState.pdf.totalPages || imageState.isProcessing}
@@ -619,7 +662,7 @@ export function ChatInterface() {
         </div>
 
         {/* Input */}
-        <div className="shrink-0 px-4 py-3 border-t border-border/50">
+        <div className="shrink-0 px-4 py-3 min-h-[66px] border-t border-border/50">
           <form
             onSubmit={e => { e.preventDefault(); if (canSend) submit(); }}
             className="flex items-end gap-2"
