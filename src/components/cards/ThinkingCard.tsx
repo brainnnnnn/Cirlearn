@@ -9,11 +9,12 @@ import { normalizeLatex } from '@/lib/heading-parser';
 
 interface ThinkingCardProps {
   content: string;
+  label?: string;
 }
 
-export function ThinkingCard({ content }: ThinkingCardProps) {
+export function ThinkingCard({ content, label }: ThinkingCardProps) {
   return (
-    <CardContainer label="解题思路" icon="💡">
+    <CardContainer label={label ?? '思路引导'} icon="💡">
       <div className="relative pl-3 border-l-[3px] border-amber-400/50">
         <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed
           [&_p]:my-0.5 [&_p]:text-foreground/85

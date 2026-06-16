@@ -15,9 +15,15 @@ type Controller = ReadableStreamDefaultController<Uint8Array>;
 
 // ── Simple text-only SSE parser (no tool calls) ─────────────────────────────
 
+function normalizeEnglishHeadings(text: string, subject: string): string {
+  if (subject !== 'english') return text;
+  return text.replace(/##\s*拼音/g, '## 音标');
+}
+
 async function streamText(
   res: Response,
   ctrl: Controller,
+  subject: string,
 ): Promise<string> {
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
@@ -55,8 +61,9 @@ async function streamText(
 
       if (typeof delta.content === 'string' && delta.content) {
         chunkCount++;
-        assistantText += delta.content;
-        ctrl.enqueue(ndjson({ t: 'tx', v: delta.content }));
+        const normalized = normalizeEnglishHeadings(delta.content, subject);
+        assistantText += normalized;
+        ctrl.enqueue(ndjson({ t: 'tx', v: normalized }));
       }
     }
   }
@@ -144,7 +151,7 @@ export async function POST(req: Request) {
     const googleModel = (model as string).replace(/^google\//, '') || 'gemini-2.0-flash';
     const readable = new ReadableStream<Uint8Array>({
       async start(ctrl) {
-        try { await runOpenAI(googleBase, apiKey, googleModel, messages, systemPrompt, ctrl); }
+        try { await runOpenAI(googleBase, apiKey, googleModel, messages, systemPrompt, ctrl, subject); }
         catch (err) { ctrl.enqueue(ndjson({ t: 'err', v: err instanceof Error ? err.message : String(err) })); }
         finally { ctrl.close(); }
       },
@@ -156,9 +163,9 @@ export async function POST(req: Request) {
     async start(ctrl) {
       try {
         if (isAnthropic) {
-          await runAnthropic(apiKey, model, messages, systemPrompt, ctrl);
+          await runAnthropic(apiKey, model, messages, systemPrompt, ctrl, subject);
         } else {
-          await runOpenAI(resolvedBaseURL, apiKey, model, messages, systemPrompt, ctrl);
+          await runOpenAI(resolvedBaseURL, apiKey, model, messages, systemPrompt, ctrl, subject);
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -181,6 +188,7 @@ async function runOpenAI(
   messages: Array<{ role: string; content: MessageContent }>,
   systemPrompt: string,
   ctrl: Controller,
+  subject: string,
 ) {
   if (!baseURL) throw new Error('baseURL is required。请填入API Base URL，例如：https://api.moonshot.cn/v1');
   const url = baseURL.replace(/\/$/, '') + '/chat/completions';
@@ -204,7 +212,7 @@ async function runOpenAI(
     throw new Error(`API error ${res.status}: ${errText.slice(0, 200)}`);
   }
 
-  await streamText(res, ctrl);
+  await streamText(res, ctrl, subject);
 }
 
 // ── Anthropic runner (text-only, no tool calls) ──────────────────────────────
@@ -215,6 +223,7 @@ async function runAnthropic(
   messages: Array<{ role: string; content: MessageContent }>,
   systemPrompt: string,
   ctrl: Controller,
+  subject: string,
 ) {
   const url = 'https://api.anthropic.com/v1/messages';
   const id = model.replace(/^anthropic\//, '') || 'claude-sonnet-4-5';
@@ -238,7 +247,7 @@ async function runAnthropic(
     throw new Error(`Anthropic error ${res.status}: ${err}`);
   }
 
-  await streamAnthropicText(res, ctrl);
+  await streamAnthropicText(res, ctrl, subject);
 }
 
 // ── Anthropic text-only SSE parser ───────────────────────────────────────────
@@ -246,6 +255,7 @@ async function runAnthropic(
 async function streamAnthropicText(
   res: Response,
   ctrl: Controller,
+  subject: string,
 ): Promise<string> {
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
@@ -268,8 +278,9 @@ async function streamAnthropicText(
         const delta = json.delta as Record<string, unknown>;
         if (delta.type === 'text_delta') {
           const text = String(delta.text ?? '');
-          assistantText += text;
-          ctrl.enqueue(ndjson({ t: 'tx', v: text }));
+          const normalized = normalizeEnglishHeadings(text, subject);
+          assistantText += normalized;
+          ctrl.enqueue(ndjson({ t: 'tx', v: normalized }));
         }
       }
     }
