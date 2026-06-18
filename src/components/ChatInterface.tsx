@@ -149,6 +149,8 @@ export function ChatInterface() {
       model,
       baseURL: baseURL.trim() || undefined,
       subjectOverride: intent.subject,
+      intentName: intent.name,
+      questionType: intent.questionType,
       imageDataUrl: hasMultipleIntents ? undefined : (croppedImageRef.current ?? undefined),
       fullPageImageUrl: hasMultipleIntents ? undefined : (fullPageImageRef.current ?? undefined),
     });

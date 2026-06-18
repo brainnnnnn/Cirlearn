@@ -198,6 +198,20 @@ export function MessageItem({
                     <span className="text-[10px] text-muted-foreground/60">{Math.round(intent.confidence * 100)}%</span>
                   </div>
                   <p className="text-xs text-muted-foreground">{intent.description}</p>
+                  {(intent.questionType || intent.knowledgePoint) && (
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {intent.questionType?.type_all && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-100 dark:border-blue-900">
+                          {intent.questionType.type_all}
+                        </span>
+                      )}
+                      {intent.knowledgePoint && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-100 dark:border-amber-900">
+                          {intent.knowledgePoint}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </button>
               ))}
             </div>

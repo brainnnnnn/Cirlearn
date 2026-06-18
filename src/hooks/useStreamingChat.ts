@@ -50,7 +50,7 @@ export function useStreamingChat(apiPath = '/api/chat') {
 
   const sendMessage = useCallback(async (
     userContent: string,
-    config: { apiKey: string; model: string; baseURL?: string; subjectOverride?: 'math' | 'chinese' | 'english'; intentName?: string },
+    config: { apiKey: string; model: string; baseURL?: string; subjectOverride?: 'math' | 'chinese' | 'english'; intentName?: string; questionType?: { type: number; type_16: string; type_all: string } },
   ) => {
     if (!userContent.trim()) return;
 
@@ -137,6 +137,8 @@ export function useStreamingChat(apiPath = '/api/chat') {
           apiKey: config.apiKey,
           ...(config.baseURL ? { baseURL: config.baseURL } : {}),
           ...(config.subjectOverride ? { subjectOverride: config.subjectOverride } : {}),
+          ...(config.intentName ? { intentName: config.intentName } : {}),
+          ...(config.questionType ? { questionType: config.questionType } : {}),
         }),
       });
 
@@ -208,7 +210,7 @@ export function useStreamingChat(apiPath = '/api/chat') {
     messageId: string,
     intentIndex: number,
     userContent: string,
-    config: { apiKey: string; model: string; baseURL?: string; subjectOverride?: 'math' | 'chinese' | 'english'; imageDataUrl?: string; fullPageImageUrl?: string },
+    config: { apiKey: string; model: string; baseURL?: string; subjectOverride?: 'math' | 'chinese' | 'english'; imageDataUrl?: string; fullPageImageUrl?: string; intentName?: string; questionType?: { type: number; type_16: string; type_all: string } },
   ) => {
     // Mark target slot as streaming
     setMessages(prev => prev.map(m => {
@@ -304,6 +306,8 @@ export function useStreamingChat(apiPath = '/api/chat') {
           apiKey: config.apiKey,
           subjectOverride: config.subjectOverride,
           ...(config.baseURL ? { baseURL: config.baseURL } : {}),
+          ...(config.intentName ? { intentName: config.intentName } : {}),
+          ...(config.questionType ? { questionType: config.questionType } : {}),
         }),
         signal: AbortSignal.any([
           abortRef.current.signal,

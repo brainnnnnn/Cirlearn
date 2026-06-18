@@ -69,6 +69,12 @@ export interface Intent {
   visualDescription: string;  // VLM's description of figures, tables, diagrams
   pageContext: string;        // grade, chapter, page type inferred from full image
   subject: 'math' | 'chinese' | 'english';
+  questionType?: {
+    type: number;
+    type_16: string;
+    type_all: string;
+  };
+  knowledgePoint?: string;
 }
 
 /**
