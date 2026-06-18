@@ -76,6 +76,8 @@ async function callOpenAICompatible(options: LLMCallOptions & { baseURL: string 
     body.max_tokens = maxTokens;
   }
 
+  console.log('[llm debug] outgoing body:', JSON.stringify(body));
+
   return fetch(url, {
     method: 'POST',
     headers: {
@@ -126,6 +128,8 @@ async function callGoogleOpenAI(options: LLMCallOptions, baseURL: string): Promi
   if (maxTokens !== undefined) {
     body.max_tokens = maxTokens;
   }
+
+  console.log('[llm debug] outgoing body:', JSON.stringify(body));
 
   return fetch(url, {
     method: 'POST',

@@ -42,6 +42,15 @@ export async function streamChat(request: ChatRequest): Promise<Response> {
     (!!baseURL && /google|generativelanguage|gemini/.test(baseURL)) ||
     (!!model && model.toLowerCase().startsWith('gemini'));
 
+  // Detect OpenAI reasoning models that only allow temperature=1
+  const isReasoningModel = !!model && /\b(o1|o3)\b/i.test(model);
+
+  // Debug: log provider detection inputs
+  console.log('[chat debug] apiKey prefix:', apiKey.slice(0, 6));
+  console.log('[chat debug] baseURL:', baseURL);
+  console.log('[chat debug] model:', model);
+  console.log('[chat debug] isGoogle:', isGoogle, 'isAnthropic:', isAnthropic, 'isReasoningModel:', isReasoningModel);
+
   // Debug: log what the generation model receives
   console.log('[chat input] subject:', subject);
   console.log('[chat input] system prompt (first 100):', systemPrompt.slice(0, 100));
@@ -59,9 +68,9 @@ export async function streamChat(request: ChatRequest): Promise<Response> {
   // Kimi context window limits: 8k→8192 total, 32k→32768 total.
   const maxTokens = resolvedModel.includes('8k') ? 2000 : resolvedModel.includes('32k') ? 4000 : 4000;
 
-  // Google Gemini (especially experimental/thinking models) only allows temperature=1
-  const temperature = isGoogle ? 1 : 0.7;
-  console.log('[chat provider] isGoogle:', isGoogle, 'temperature:', temperature, 'model:', resolvedModel);
+  // Google Gemini and OpenAI reasoning models only allow temperature=1
+  const temperature = isGoogle || isReasoningModel ? 1 : 0.7;
+  console.log('[chat provider] isGoogle:', isGoogle, 'isReasoningModel:', isReasoningModel, 'temperature:', temperature, 'model:', resolvedModel);
 
   return callLLM({
     baseURL,
