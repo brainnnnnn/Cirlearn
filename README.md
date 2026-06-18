@@ -2,28 +2,15 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-This project now uses a separate backend service (`cirlearn-backend`). To start both the backend and frontend in one command:
+Run the development server:
 
 ```bash
-npm run dev:all
-```
-
-This will start:
-- Backend at [http://localhost:3001](http://localhost:3001)
-- Frontend at [http://localhost:3000](http://localhost:3000)
-
-If you prefer to start them separately:
-
-```bash
-# Terminal 1: backend
-cd ../cirlearn-backend
-npm run dev
-
-# Terminal 2: frontend
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+This is a full-stack Next.js project. The API routes (`/api/vlm` and `/api/chat`) are included in this project.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
