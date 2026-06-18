@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { loadPDF, renderPDFPage } from '@/lib/pdf-utils';
+import { BACKEND_URL } from '@/lib/backend-config';
 import type { ImageUploadState, VLMProviderConfig, Rectangle } from '@/types/image-upload';
 
 const INITIAL_STATE: ImageUploadState = {
@@ -49,7 +50,7 @@ export function useImageUpload() {
         }
       }
 
-      const response = await fetch('/api/vlm', {
+      const response = await fetch(`${BACKEND_URL}/vlm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

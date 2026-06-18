@@ -6,6 +6,7 @@ import { useStreamingChat } from '@/hooks/useStreamingChat';
 import type { ChatMessage } from '@/hooks/useStreamingChat';
 import { useImageUpload } from '@/hooks/useImageUpload';
 import { blobUrlToDataUrl } from '@/lib/image-utils';
+import { BACKEND_URL } from '@/lib/backend-config';
 import { ImageUploadButton } from './ImageUploadButton';
 import { RegionSelector } from './RegionSelector';
 import type { VLMProviderConfig, Rectangle } from '@/types/image-upload';
@@ -77,7 +78,7 @@ export function ChatInterface() {
     }
   }, [imageState.pdf?.currentPage]);
 
-  const { messages, setMessages, isLoading, error, sendMessage, stop, streamIntoMessage } = useStreamingChat('/api/chat');
+  const { messages, setMessages, isLoading, error, sendMessage, stop, streamIntoMessage } = useStreamingChat(`${BACKEND_URL}/chat`);
   // ref to the current intent-bubble message id, used by VLM callback
   const intentBubbleIdRef = useRef<string | null>(null);
   // ref to the cropped image data URL for the current selection
