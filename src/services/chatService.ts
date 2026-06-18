@@ -55,12 +55,15 @@ export async function streamChat(request: ChatRequest): Promise<Response> {
   // Kimi context window limits: 8k→8192 total, 32k→32768 total.
   const maxTokens = resolvedModel.includes('8k') ? 2000 : resolvedModel.includes('32k') ? 4000 : 4000;
 
+  // Google Gemini (especially experimental/thinking models) only allows temperature=1
+  const temperature = isGoogle ? 1 : 0.7;
+
   return callLLM({
     baseURL,
     apiKey,
     model: resolvedModel,
     messages: [{ role: 'system', content: systemPrompt }, ...messages.map(m => ({ role: m.role, content: m.content }))],
-    temperature: 0.7,
+    temperature,
     stream: true,
     maxTokens: isAnthropic ? 4096 : maxTokens,
     timeout: FETCH_TIMEOUT_MS,
