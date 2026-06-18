@@ -36,7 +36,11 @@ export async function streamChat(request: ChatRequest): Promise<Response> {
   }
 
   const isAnthropic = !baseURL && apiKey.startsWith('sk-ant-');
-  const isGoogle = !baseURL && apiKey.startsWith('AIza');
+  // Detect Google by key prefix, baseURL, or model name (gemini/*)
+  const isGoogle =
+    (!baseURL && apiKey.startsWith('AIza')) ||
+    (!!baseURL && /google|generativelanguage|gemini/.test(baseURL)) ||
+    (!!model && model.toLowerCase().startsWith('gemini'));
 
   // Debug: log what the generation model receives
   console.log('[chat input] subject:', subject);
@@ -57,6 +61,7 @@ export async function streamChat(request: ChatRequest): Promise<Response> {
 
   // Google Gemini (especially experimental/thinking models) only allows temperature=1
   const temperature = isGoogle ? 1 : 0.7;
+  console.log('[chat provider] isGoogle:', isGoogle, 'temperature:', temperature, 'model:', resolvedModel);
 
   return callLLM({
     baseURL,
