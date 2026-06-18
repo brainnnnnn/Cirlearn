@@ -2,16 +2,25 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+This project now uses a separate backend service (`cirlearn-backend`). To start both the backend and frontend in one command:
 
 ```bash
+npm run dev:all
+```
+
+This will start:
+- Backend at [http://localhost:3001](http://localhost:3001)
+- Frontend at [http://localhost:3000](http://localhost:3000)
+
+If you prefer to start them separately:
+
+```bash
+# Terminal 1: backend
+cd ../cirlearn-backend
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# Terminal 2: frontend
+npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
