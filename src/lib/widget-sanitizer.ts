@@ -114,7 +114,7 @@ export function buildReceiverSrcdoc(
   const csp = [
     "default-src 'none'",
     `script-src 'unsafe-inline' ${cspDomains}`,
-    "style-src 'unsafe-inline'",
+    `style-src 'unsafe-inline' ${cspDomains}`,
     "img-src * data: blob:",
     "font-src * data:",
     `connect-src ${cspDomains}`,
@@ -136,12 +136,25 @@ var _lastH=0;
 var _ro=new ResizeObserver(_h);
 _ro.observe(root);
 
+function normalizeIds(html){
+// Defensive rewrite: hardcoded 'jxgbox' ids become unique per widget,
+// so multiple JSXGraph boards inside the same widget don't collide.
+if(!/id=["']jxgbox["']/.test(html)) return html;
+var uid='jxgbox-'+Math.random().toString(36).slice(2,10);
+html=html.replace(/id=["']jxgbox["']/g,'id="'+uid+'"');
+// Replace initBoard('jxgbox' or initBoard("jxgbox" with initBoard('jxgbox-xxx'
+html=html.replace(/initBoard\\(['"]jxgbox['"]/g,"initBoard('"+uid+"'");
+return html;
+}
+
 function applyHtml(html){
-root.innerHTML=html;
+root.innerHTML=normalizeIds(html);
 _h();
 }
 
 function finalizeHtml(html){
+html=normalizeIds(html);
+console.log('[widget receiver] finalize received, html length='+html.length);
 // Parse finalized HTML in a temp container to separate scripts from content
 var tmp=document.createElement('div');
 tmp.innerHTML=html;
@@ -155,6 +168,7 @@ if(a.name!=='src')scripts[scripts.length-1].attrs.push({name:a.name,value:a.valu
 }
 ss[i].remove();
 }
+console.log('[widget receiver] scripts found:', scripts.length);
 // Update non-script content only if it differs (avoids repaint flash)
 var visualHtml=tmp.innerHTML;
 if(root.innerHTML!==visualHtml)root.innerHTML=visualHtml;
@@ -164,10 +178,11 @@ if(root.innerHTML!==visualHtml)root.innerHTML=visualHtml;
 var cdnScripts=scripts.filter(function(s){return !!s.src});
 var inlineScripts=scripts.filter(function(s){return !s.src&&s.text});
 function _appendInline(){
+console.log('[widget receiver] running inline scripts:', inlineScripts.length);
 for(var k=0;k<inlineScripts.length;k++){
 var s=document.createElement('script');
 // Wrap inline script in try/catch so CDN-dependency errors don't crash the widget
-var safeText='try{'+inlineScripts[k].text+'}catch(e){var _r=document.getElementById("__root");if(_r&&!_r.querySelector(".__err")){var _d=document.createElement("div");_d.className="__err";_d.style="padding:12px;color:#888;font-size:13px;";_d.textContent="可视化加载失败（库未能加载），请检查网络连接";_r.appendChild(_d);}}';
+var safeText='try{console.log("[widget receiver] inline script start");'+inlineScripts[k].text+';console.log("[widget receiver] inline script done");}catch(e){console.error("[widget runtime error]",e);var _r=document.getElementById("__root");if(_r&&!_r.querySelector(".__err")){var _d=document.createElement("div");_d.className="__err";_d.style="padding:12px;color:#888;font-size:13px;white-space:pre-wrap;";_d.textContent="可视化加载失败："+(e&&e.message?e.message:String(e));_r.appendChild(_d);}}';
 s.textContent=safeText;
 for(var j=0;j<inlineScripts[k].attrs.length;j++)s.setAttribute(inlineScripts[k].attrs[j].name,inlineScripts[k].attrs[j].value);
 root.appendChild(s);
@@ -175,14 +190,15 @@ root.appendChild(s);
 _h();
 // Signal that all scripts (CDN + inline) have executed.
 // Chart.js init runs synchronously inside inline scripts, so canvas is painted by now.
-setTimeout(function(){parent.postMessage({type:'widget:scriptsReady'},'*')},50);
+setTimeout(function(){parent.postMessage({type:'widget:scriptsReady'},'*');console.log('[widget receiver] root dims after scripts:', root.getBoundingClientRect());},50);
 }
 if(cdnScripts.length===0){
 _appendInline();
 }else{
 // Wait for ALL CDN scripts to load/error, then run inline once
+console.log('[widget receiver] loading CDN scripts:', cdnScripts.length);
 var _pending=cdnScripts.length;
-function _onCdnDone(){_pending--;if(_pending<=0)_appendInline()}
+function _onCdnDone(ev){_pending--;console.log('[widget receiver] CDN script done, remaining:', _pending, 'event:', ev&&ev.type);if(_pending<=0)_appendInline()}
 for(var i=0;i<cdnScripts.length;i++){
 var n=document.createElement('script');
 n.src=cdnScripts[i].src;

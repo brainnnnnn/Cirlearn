@@ -55,6 +55,7 @@ const HEADING_MAP: Record<string, string> = {
   '正确答案': 'answer',
   '最终结果': 'answer',
   '解题提示': 'hint',
+  '要点提示': 'hint',
   '错误分析': 'error_analysis',
   '错因分析': 'error_analysis',
   '方法归纳': 'method_summary',
@@ -177,8 +178,9 @@ function extractWidgets(text: string): [string, Array<{ title: string; code: str
           widget: { title: String(parsed.title ?? ''), code },
         });
       }
-    } catch {
+    } catch (err) {
       // Invalid JSON in code fence, skip
+      console.warn('[widget parse error]', err instanceof Error ? err.message : String(err), 'raw:', match[1].slice(0, 200));
     }
   }
 

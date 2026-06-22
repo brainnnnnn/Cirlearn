@@ -137,23 +137,32 @@ export function ChatInterface() {
 
     const parts: string[] = [];
     parts.push(`【意图】${intent.name}`);
-    if (intent.content) parts.push(`【题目原文】\n${intent.content}`);
+    // 优先使用当前意图的题干；当前意图没有时，回退到同一批识别的第一个有题干的意图
+    const questionText = intent.content || bubble.intents?.find(i => i.content)?.content || '';
+    if (questionText) parts.push(`【题目原文】\n${questionText}`);
+    if (intent.content && intent.content !== questionText) parts.push(`【用户圈选内容】\n${intent.content}`);
     if (intent.visualDescription) parts.push(`【图形/表格说明】\n${intent.visualDescription}`);
     if (intent.pageContext) parts.push(`【页面背景】\n${intent.pageContext}`);
+    if (intent.knowledgePoint) parts.push(`【知识点】\n${intent.knowledgePoint}`);
     parts.push(`【学习目标】${intent.description}`);
     const query = parts.join('\n\n');
 
-    const hasMultipleIntents = (bubble.intents?.length ?? 0) > 1;
-    streamIntoMessage(messageId, intentIndex, query, {
+    // 始终携带图片：多模态模型需要完整题目 + 圈选区域两重视觉上下文
+    const imageDataUrl = croppedImageRef.current ?? undefined;
+    const fullPageImageUrl = fullPageImageRef.current ?? undefined;
+
+    const payload = {
       apiKey,
       model,
       baseURL: baseURL.trim() || undefined,
       subjectOverride: intent.subject,
       intentName: intent.name,
       questionType: intent.questionType,
-      imageDataUrl: hasMultipleIntents ? undefined : (croppedImageRef.current ?? undefined),
-      fullPageImageUrl: hasMultipleIntents ? undefined : (fullPageImageRef.current ?? undefined),
-    });
+      imageDataUrl,
+      fullPageImageUrl,
+    };
+    console.log('[chat request payload]', { query, ...payload });
+    streamIntoMessage(messageId, intentIndex, query, payload);
   }
 
   // When VLM extraction completes, populate intent-select bubble

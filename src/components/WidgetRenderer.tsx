@@ -15,6 +15,22 @@ const MAX_IFRAME_HEIGHT = 2000;
 const STREAM_DEBOUNCE = 120;
 const CDN_PATTERN = /cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com|esm\.sh/;
 
+function detectWidgetType(code: string): string {
+  const c = code.toLowerCase();
+  if (c.includes('jsxgraph') || c.includes('jxg.jsxgraph') || c.includes('initboard(')) return 'jsxgraph';
+  if (c.includes('hanziwriter') || c.includes('hanzi-writer')) return 'hanzi-writer';
+  if (c.includes('chart.js') || c.includes('new chart(') || c.includes('chartjs')) return 'chart.js';
+  if (c.includes('<svg')) return 'svg';
+  if (c.includes('<canvas')) return 'canvas';
+  return 'html/dom';
+}
+
+function summarizeWidget(code: string): string {
+  const type = detectWidgetType(code);
+  const cdns = Array.from(code.match(/https:\/\/(cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com|esm\.sh)[^"'\s]+/g) ?? []);
+  return `[widget debug] type=${type} cdns=[${cdns.join(', ')}] length=${code.length}\n${code.slice(0, 2000)}`;
+}
+
 /** Module-level height cache — persists across streaming→finalized remount */
 const _heightCache = new Map<string, number>();
 function getHeightCacheKey(code: string): string {
@@ -36,6 +52,13 @@ export function WidgetRenderer({ widgetCode, isStreaming, title, showOverlay }: 
   );
   const heightLockedRef = useRef(false);
   const hasCDN = useMemo(() => CDN_PATTERN.test(widgetCode), [widgetCode]);
+
+  // Debug: log widget rendering type/CDNs when code stabilizes
+  useEffect(() => {
+    if (!isStreaming && widgetCode) {
+      console.log(summarizeWidget(widgetCode));
+    }
+  }, [widgetCode, isStreaming]);
 
   const srcdoc = useMemo(() => {
     const isDark = typeof document !== 'undefined'
@@ -161,8 +184,12 @@ export function WidgetRenderer({ widgetCode, isStreaming, title, showOverlay }: 
 
   const showLoadingOverlay = hasCDN && !isStreaming && iframeReady && !finalized;
 
+  // Ensure the widget is always interactive/inspectable even if the inner iframe
+  // reports zero height (e.g. JSXGraph board created off-DOM or sizing bug).
+  const containerMinHeight = Math.max(80, iframeHeight);
+
   return (
-    <div className="group/widget relative my-2 rounded-lg overflow-hidden border border-border/30">
+    <div className="group/widget relative my-2 rounded-lg overflow-hidden border border-border/30" style={{ minHeight: containerMinHeight }}>
       <iframe
         ref={iframeRef}
         sandbox="allow-scripts"
@@ -171,7 +198,7 @@ export function WidgetRenderer({ widgetCode, isStreaming, title, showOverlay }: 
         onLoad={() => setIframeReady(true)}
         style={{
           width: '100%',
-          height: iframeHeight,
+          height: Math.max(80, iframeHeight),
           border: 'none',
           display: showCode ? 'none' : 'block',
           overflow: 'hidden',
@@ -196,10 +223,10 @@ export function WidgetRenderer({ widgetCode, isStreaming, title, showOverlay }: 
         </pre>
       )}
 
-      <div className="absolute top-1 right-1 opacity-0 group-hover/widget:opacity-100 transition-opacity">
+      <div className="absolute top-1 right-1 z-10">
         <button
           onClick={() => setShowCode(!showCode)}
-          className="text-[10px] px-1.5 py-0.5 rounded text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50"
+          className="text-[10px] px-1.5 py-0.5 rounded bg-background/80 text-muted-foreground hover:text-muted-foreground hover:bg-muted/50 border border-border/40 shadow-sm"
         >
           {showCode ? 'hide code' : 'show code'}
         </button>

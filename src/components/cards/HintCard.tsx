@@ -13,7 +13,7 @@ interface HintCardProps {
 
 export function HintCard({ content }: HintCardProps) {
   return (
-    <CardContainer label="解题提示" icon="👉">
+    <CardContainer label="要点提示" icon="👉">
       <div className="relative pl-3 border-l-[3px] border-orange-400/50">
         <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed
           [&_p]:my-0.5 [&_p]:text-foreground/85

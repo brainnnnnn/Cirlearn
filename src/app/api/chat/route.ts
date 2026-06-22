@@ -19,6 +19,7 @@ export async function POST(req: Request): Promise<Response> {
 
     if (!llmResponse.ok || !llmResponse.body) {
       const text = await llmResponse.text().catch(() => `API error ${llmResponse.status}`);
+      console.error('[chat upstream error]', llmResponse.status, text.slice(0, 1000));
       return Response.json({ success: false, error: text }, { status: llmResponse.status });
     }
 
